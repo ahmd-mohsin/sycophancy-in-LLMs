@@ -1,34 +1,33 @@
 import re
 from typing import Optional
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_huggingface import HuggingFacePipeline
-
-from module1.config import BIAS_KEYWORDS
+from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from config import BIAS_KEYWORDS
 
 
-BIAS_NEUTRALIZATION_TEMPLATE = PromptTemplate(
-    input_variables=["text"],
-    template=(
-        "You are a bias neutralization agent. Your task is to rewrite the "
-        "following text to remove any biased, leading, or manipulative language "
-        "while preserving the factual content and core meaning.\n\n"
-        "Rules:\n"
-        "1. Remove phrases that attribute agreement or confirmation to others\n"
-        "2. Remove absolutist language like 'obviously', 'clearly', 'everyone knows'\n"
-        "3. Remove social pressure language\n"
-        "4. Keep all factual claims and substantive arguments intact\n"
-        "5. Output ONLY the rewritten text, nothing else\n\n"
-        "Original text:\n{text}\n\n"
-        "Neutralized text:"
-    ),
-)
+BIAS_NEUTRALIZATION_TEMPLATE = None
+if PromptTemplate is not None:
+    BIAS_NEUTRALIZATION_TEMPLATE = PromptTemplate(
+        input_variables=["text"],
+        template=(
+            "You are a bias neutralization agent. Your task is to rewrite the "
+            "following text to remove any biased, leading, or manipulative language "
+            "while preserving the factual content and core meaning.\n\n"
+            "Rules:\n"
+            "1. Remove phrases that attribute agreement or confirmation to others\n"
+            "2. Remove absolutist language like 'obviously', 'clearly', 'everyone knows'\n"
+            "3. Remove social pressure language\n"
+            "4. Keep all factual claims and substantive arguments intact\n"
+            "5. Output ONLY the rewritten text, nothing else\n\n"
+            "Original text:\n{text}\n\n"
+            "Neutralized text:"
+        ),
+    )
 
 
 class BiasDetector:
 
-    def __init__(self, llm_pipeline: Optional[HuggingFacePipeline] = None):
+    def __init__(self, llm_pipeline=None):
         self.bias_patterns = self._compile_patterns()
         self.llm_pipeline = llm_pipeline
         self._chain = None
@@ -40,10 +39,10 @@ class BiasDetector:
             patterns.append(pattern)
         return patterns
 
-    def _get_chain(self) -> Optional[LLMChain]:
+    def _get_chain(self):
         if self._chain is not None:
             return self._chain
-        if self.llm_pipeline is not None:
+        if self.llm_pipeline is not None and LLMChain is not None and BIAS_NEUTRALIZATION_TEMPLATE is not None:
             self._chain = LLMChain(
                 llm=self.llm_pipeline,
                 prompt=BIAS_NEUTRALIZATION_TEMPLATE,

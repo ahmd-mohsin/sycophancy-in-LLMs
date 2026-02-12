@@ -1,20 +1,19 @@
 from typing import Optional
 
-from langchain_huggingface import HuggingFacePipeline
-
-from module1.config import HF_MODEL_NAME, HF_MAX_NEW_TOKENS, HF_TEMPERATURE
-from module1.conversation_history import ConversationHistoryManager
-from module1.bias_detector import BiasDetector
-from module1.claim_extractor import ClaimExtractor
-from module1.question_classifier import QuestionClassifier
-from module1.context_extractor import ContextExtractor
+from lc_compat import HuggingFacePipeline
+from config import HF_MODEL_NAME, HF_MAX_NEW_TOKENS, HF_TEMPERATURE
+from conversation_history import ConversationHistoryManager
+from bias_detector import BiasDetector
+from claim_extractor import ClaimExtractor
+from question_classifier import QuestionClassifier
+from context_extractor import ContextExtractor
 
 
 class Module1:
 
     def __init__(
         self,
-        llm_pipeline: Optional[HuggingFacePipeline] = None,
+        llm_pipeline=None,
         history_manager: Optional[ConversationHistoryManager] = None,
         use_llm: bool = True,
     ):
@@ -32,7 +31,9 @@ class Module1:
             self.llm_pipeline, self.history_manager, self.bias_detector
         )
 
-    def _create_pipeline(self) -> Optional[HuggingFacePipeline]:
+    def _create_pipeline(self):
+        if HuggingFacePipeline is None:
+            return None
         try:
             from transformers import pipeline as hf_pipeline
 

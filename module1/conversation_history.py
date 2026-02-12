@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from module1.config import CONVERSATION_HISTORY_PATH, MAX_HISTORY_TURNS
+from config import CONVERSATION_HISTORY_PATH, MAX_HISTORY_TURNS
 
 
 class ConversationHistoryManager:
@@ -13,7 +13,7 @@ class ConversationHistoryManager:
         self._ensure_file_exists()
 
     def _ensure_file_exists(self):
-        if not self.history_path.exists():
+        if not self.history_path.exists() or self.history_path.stat().st_size == 0:
             self.history_path.parent.mkdir(parents=True, exist_ok=True)
             self._write_history({"sessions": {}})
 

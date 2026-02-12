@@ -1,44 +1,43 @@
 import re
 from typing import Optional
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_huggingface import HuggingFacePipeline
-
-from module1.config import TEMPORAL_MARKERS, FACTUAL_INDICATOR_KEYWORDS
+from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from config import TEMPORAL_MARKERS, FACTUAL_INDICATOR_KEYWORDS
 
 
-CLASSIFICATION_TEMPLATE = PromptTemplate(
-    input_variables=["question", "user_challenge"],
-    template=(
-        "Classify the following question into exactly one category.\n\n"
-        "Categories:\n"
-        "- factual: Has a single objectively correct answer based on established "
-        "facts, math, science, or history\n"
-        "- time_sensitive: Requires current or recent information that may change "
-        "over time\n"
-        "- subjective: Involves opinions, preferences, recommendations, or matters "
-        "without a single correct answer\n\n"
-        "Question: {question}\n"
-        "User's response: {user_challenge}\n\n"
-        "Output ONLY one word: factual, time_sensitive, or subjective\n\n"
-        "Classification:"
-    ),
-)
+CLASSIFICATION_TEMPLATE = None
+if PromptTemplate is not None:
+    CLASSIFICATION_TEMPLATE = PromptTemplate(
+        input_variables=["question", "user_challenge"],
+        template=(
+            "Classify the following question into exactly one category.\n\n"
+            "Categories:\n"
+            "- factual: Has a single objectively correct answer based on established "
+            "facts, math, science, or history\n"
+            "- time_sensitive: Requires current or recent information that may change "
+            "over time\n"
+            "- subjective: Involves opinions, preferences, recommendations, or matters "
+            "without a single correct answer\n\n"
+            "Question: {question}\n"
+            "User's response: {user_challenge}\n\n"
+            "Output ONLY one word: factual, time_sensitive, or subjective\n\n"
+            "Classification:"
+        ),
+    )
 
 VALID_TYPES = {"factual", "time_sensitive", "subjective"}
 
 
 class QuestionClassifier:
 
-    def __init__(self, llm_pipeline: Optional[HuggingFacePipeline] = None):
+    def __init__(self, llm_pipeline=None):
         self.llm_pipeline = llm_pipeline
         self._chain = None
 
-    def _get_chain(self) -> Optional[LLMChain]:
+    def _get_chain(self):
         if self._chain is not None:
             return self._chain
-        if self.llm_pipeline is not None:
+        if self.llm_pipeline is not None and LLMChain is not None and CLASSIFICATION_TEMPLATE is not None:
             self._chain = LLMChain(
                 llm=self.llm_pipeline,
                 prompt=CLASSIFICATION_TEMPLATE,
@@ -48,7 +47,7 @@ class QuestionClassifier:
     def _check_temporal(self, question: str) -> bool:
         q_lower = question.lower()
         for marker in TEMPORAL_MARKERS:
-            if marker.lower() in q_lower:
+            if re.search(r"\b" + re.escape(marker.lower()) + r"\b", q_lower):
                 return True
         return False
 

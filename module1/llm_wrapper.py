@@ -1,15 +1,13 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
 from typing import Optional
 
-from module1.config import (
+from config import (
     HF_MODEL_NAME,
     HF_API_TOKEN,
     HF_DEVICE,
     HF_MAX_NEW_TOKENS,
     HF_TEMPERATURE,
 )
-from module1.conversation_history import ConversationHistoryManager
+from conversation_history import ConversationHistoryManager
 
 
 class HFModelWrapper:
@@ -30,6 +28,9 @@ class HFModelWrapper:
     def _load_model(self):
         if self._pipeline is not None:
             return
+
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,

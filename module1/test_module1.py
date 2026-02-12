@@ -1,17 +1,17 @@
 import os
+import sys
 import json
 import tempfile
 import unittest
 
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from module1.conversation_history import ConversationHistoryManager
-from module1.bias_detector import BiasDetector
-from module1.claim_extractor import ClaimExtractor
-from module1.question_classifier import QuestionClassifier
-from module1.context_extractor import ContextExtractor
-from module1.module1_main import Module1
+from conversation_history import ConversationHistoryManager
+from bias_detector import BiasDetector
+from claim_extractor import ClaimExtractor
+from question_classifier import QuestionClassifier
+from context_extractor import ContextExtractor
+from module1_main import Module1
 
 
 class TestConversationHistoryManager(unittest.TestCase):

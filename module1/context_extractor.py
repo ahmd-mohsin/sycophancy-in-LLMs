@@ -1,38 +1,37 @@
 import re
 from typing import Optional
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_huggingface import HuggingFacePipeline
-
-from module1.conversation_history import ConversationHistoryManager
-from module1.bias_detector import BiasDetector
+from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from conversation_history import ConversationHistoryManager
+from bias_detector import BiasDetector
 
 
-CONTEXT_SUMMARIZATION_TEMPLATE = PromptTemplate(
-    input_variables=["conversation_history"],
-    template=(
-        "You are a context summarization agent. Analyze the conversation history "
-        "below and extract ONLY the following categories of information.\n\n"
-        "Extract:\n"
-        "1. USER_PROFILE: Any self-descriptions by the user (experience level, "
-        "domain expertise, preferences, background)\n"
-        "2. TOPICS: The main discussion topics covered\n"
-        "3. FACTS: Factual statements made during the conversation that are "
-        "relevant context\n\n"
-        "DO NOT extract:\n"
-        "- Agreements or disagreements between user and assistant\n"
-        "- Evaluative judgments (e.g., 'X is better than Y')\n"
-        "- Social dynamics or pleasantries\n"
-        "- Any biased or leading statements\n\n"
-        "Conversation:\n{conversation_history}\n\n"
-        "Output in this exact format:\n"
-        "USER_PROFILE: [comma-separated items]\n"
-        "TOPICS: [comma-separated items]\n"
-        "FACTS: [comma-separated items]\n\n"
-        "Extraction:"
-    ),
-)
+CONTEXT_SUMMARIZATION_TEMPLATE = None
+if PromptTemplate is not None:
+    CONTEXT_SUMMARIZATION_TEMPLATE = PromptTemplate(
+        input_variables=["conversation_history"],
+        template=(
+            "You are a context summarization agent. Analyze the conversation history "
+            "below and extract ONLY the following categories of information.\n\n"
+            "Extract:\n"
+            "1. USER_PROFILE: Any self-descriptions by the user (experience level, "
+            "domain expertise, preferences, background)\n"
+            "2. TOPICS: The main discussion topics covered\n"
+            "3. FACTS: Factual statements made during the conversation that are "
+            "relevant context\n\n"
+            "DO NOT extract:\n"
+            "- Agreements or disagreements between user and assistant\n"
+            "- Evaluative judgments (e.g., 'X is better than Y')\n"
+            "- Social dynamics or pleasantries\n"
+            "- Any biased or leading statements\n\n"
+            "Conversation:\n{conversation_history}\n\n"
+            "Output in this exact format:\n"
+            "USER_PROFILE: [comma-separated items]\n"
+            "TOPICS: [comma-separated items]\n"
+            "FACTS: [comma-separated items]\n\n"
+            "Extraction:"
+        ),
+    )
 
 USER_DESCRIPTION_PATTERNS = [
     r"i(?:'m| am) (?:a |an )?([\w\s]+?)(?:\.|,|$)",
@@ -49,7 +48,7 @@ class ContextExtractor:
 
     def __init__(
         self,
-        llm_pipeline: Optional[HuggingFacePipeline] = None,
+        llm_pipeline=None,
         history_manager: Optional[ConversationHistoryManager] = None,
         bias_detector: Optional[BiasDetector] = None,
     ):
@@ -58,10 +57,10 @@ class ContextExtractor:
         self.bias_detector = bias_detector or BiasDetector(llm_pipeline)
         self._chain = None
 
-    def _get_chain(self) -> Optional[LLMChain]:
+    def _get_chain(self):
         if self._chain is not None:
             return self._chain
-        if self.llm_pipeline is not None:
+        if self.llm_pipeline is not None and LLMChain is not None and CONTEXT_SUMMARIZATION_TEMPLATE is not None:
             self._chain = LLMChain(
                 llm=self.llm_pipeline,
                 prompt=CONTEXT_SUMMARIZATION_TEMPLATE,

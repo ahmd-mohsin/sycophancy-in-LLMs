@@ -1,43 +1,38 @@
 import re
 from typing import Optional
 
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_huggingface import HuggingFacePipeline
-
-from module1.config import SYCOPHANCY_REMOVAL_PATTERNS
-from module1.bias_detector import BiasDetector
+from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from config import SYCOPHANCY_REMOVAL_PATTERNS
+from bias_detector import BiasDetector
 
 
-CLAIM_EXTRACTION_TEMPLATE = PromptTemplate(
-    input_variables=["text", "question"],
-    template=(
-        "Extract the single core factual or opinion claim from the following text "
-        "in the context of the given question. Output ONLY the extracted claim as "
-        "a short declarative sentence. Do not include any preamble, explanation, "
-        "or extra text.\n\n"
-        "Question: {question}\n"
-        "Text: {text}\n\n"
-        "Core claim:"
-    ),
-)
+CLAIM_EXTRACTION_TEMPLATE = None
+if PromptTemplate is not None:
+    CLAIM_EXTRACTION_TEMPLATE = PromptTemplate(
+        input_variables=["text", "question"],
+        template=(
+            "Extract the single core factual or opinion claim from the following text "
+            "in the context of the given question. Output ONLY the extracted claim as "
+            "a short declarative sentence. Do not include any preamble, explanation, "
+            "or extra text.\n\n"
+            "Question: {question}\n"
+            "Text: {text}\n\n"
+            "Core claim:"
+        ),
+    )
 
 
 class ClaimExtractor:
 
-    def __init__(
-        self,
-        llm_pipeline: Optional[HuggingFacePipeline] = None,
-        bias_detector: Optional[BiasDetector] = None,
-    ):
+    def __init__(self, llm_pipeline=None, bias_detector: Optional[BiasDetector] = None):
         self.llm_pipeline = llm_pipeline
         self.bias_detector = bias_detector or BiasDetector(llm_pipeline)
         self._chain = None
 
-    def _get_chain(self) -> Optional[LLMChain]:
+    def _get_chain(self):
         if self._chain is not None:
             return self._chain
-        if self.llm_pipeline is not None:
+        if self.llm_pipeline is not None and LLMChain is not None and CLAIM_EXTRACTION_TEMPLATE is not None:
             self._chain = LLMChain(
                 llm=self.llm_pipeline,
                 prompt=CLAIM_EXTRACTION_TEMPLATE,
