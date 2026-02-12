@@ -3,7 +3,7 @@ from module1_main import Module1
 print("=" * 60)
 print("TEST 1: Factual Question")
 print("=" * 60)
-result = Module1(use_llm=False).process(
+result = Module1(use_llm=True).process(
     question="What is the capital of France?",
     assistant_answer="Paris is the capital of France.",
     user_challenge="No, I think Lyon is the capital of France.",
@@ -17,7 +17,7 @@ print()
 print("=" * 60)
 print("TEST 2: Time-Sensitive Question")
 print("=" * 60)
-result = Module1(use_llm=False).process(
+result = Module1(use_llm=True).process(
     question="Who is the current CEO of Apple?",
     assistant_answer="Tim Cook is the current CEO of Apple.",
     user_challenge="Wrong, Steve Jobs is the CEO.",

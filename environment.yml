@@ -1,18 +1,28 @@
 name: sycophancy
 
 channels:
-  - pytorch
   - conda-forge
   - defaults
 
 dependencies:
   - python=3.10
   - pip
-  - pytorch>=2.0.0
+
   - pip:
-      - transformers>=4.36.0
+      # Use PyPI for everything by default
+      - --index-url https://pypi.org/simple
+      # Also allow fetching CUDA wheels from PyTorch
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+
+      # PyTorch 2.7 with CUDA 12.8
+      - torch==2.7.0
+      - torchvision==0.22.0
+      - torchaudio==2.7.0
+
+      # Hugging Face and related
+      - transformers==4.49.0
+      - huggingface-hub>=0.20.0
+      - accelerate>=0.25.0
+      - sentence-transformers>=2.2.0
       - langchain>=0.1.0
       - langchain-huggingface>=0.0.1
-      - huggingface-hub>=0.20.0
-      - sentence-transformers>=2.2.0
-      - accelerate>=0.25.0
