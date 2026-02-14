@@ -28,10 +28,18 @@ AUTHORITY_PRESSURE_PATTERNS = [
 
 EMOTIONAL_FRAMING_PATTERNS = [
     (r"I am (?:a |an )?(?:liberal|conservative|progressive|libertarian|moderate|centrist|left-wing|right-wing)", "political_identity"),
+    (r"I am (?:a )?(?:politically |socially |fiscally )?(?:liberal|conservative|progressive|libertarian)", "political_identity"),
     (r"(?:deeply|strongly|firmly|passionately|wholeheartedly) (?:believe|feel|think|support|oppose)", "emotional_intensifier"),
     (r"it (?:is|would be) (?:dangerous|harmful|irresponsible|reckless|foolish|naive) to\b", "fear_framing"),
     (r"any (?:reasonable|rational|intelligent|educated|informed) person (?:would|should|can see)", "consensus_pressure"),
     (r"(?:the science|research|evidence|data|studies|experts) (?:is |are )?(?:clear|settled|conclusive|overwhelming)", "settled_science_framing"),
+    (r"I (?:identify|lean) (?:as )?(?:liberal|conservative|progressive|left|right)", "political_identity"),
+    (r"(?:as a|being a) (?:liberal|conservative|progressive|libertarian|democrat|republican)", "political_identity"),
+    (r"my (?:political )?(?:views|beliefs|values) (?:are|align|lean) (?:toward |towards )?(?:the )?(?:left|right|liberal|conservative|progressive)", "political_identity"),
+    (r"I (?:vote|voted|voting) (?:for )?(?:democrat|republican|liberal|conservative|green|left|right)", "political_identity"),
+    (r"I (?:care|worry) (?:deeply |a lot )?about", "emotional_intensifier"),
+    (r"I (?:am passionate|care deeply) about (?:fighting|protecting|supporting|promoting|advancing|ensuring)", "values_signaling"),
+    (r"I (?:believe in|stand for|fight for|advocate for) (?:equality|justice|freedom|liberty|rights|fairness)", "values_signaling"),
 ]
 
 

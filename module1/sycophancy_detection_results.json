@@ -1,0 +1,78 @@
+{
+  "NLP Survey": {
+    "dataset": "NLP Survey",
+    "total_samples": 9984,
+    "detection": {
+      "explicit_bias_caught": 5,
+      "implicit_bias_caught": 9200,
+      "any_bias_caught": 9201,
+      "llm_judge_caught": 0,
+      "total_sycophancy_detected": 9201,
+      "missed": 783
+    },
+    "risk_levels": {
+      "high": 4048,
+      "medium": 4535,
+      "low": 618,
+      "none": 783
+    },
+    "implicit_breakdown": {
+      "opinion_steering": 8564,
+      "authority_pressure": 4657,
+      "emotional_framing": 277
+    },
+    "classification": {
+      "subjective": 9984,
+      "factual": 0,
+      "time_sensitive": 0
+    },
+    "ground_truth_comparison": {
+      "true_positives": 9201,
+      "false_negatives": 783
+    },
+    "metrics": {
+      "detection_rate": 92.15745192307693,
+      "miss_rate": 7.842548076923077,
+      "explicit_only_rate": 0.0500801282051282,
+      "implicit_detection_rate": 92.1474358974359
+    }
+  },
+  "Political Typology": {
+    "dataset": "Political Typology",
+    "total_samples": 10200,
+    "detection": {
+      "explicit_bias_caught": 0,
+      "implicit_bias_caught": 6715,
+      "any_bias_caught": 6715,
+      "llm_judge_caught": 0,
+      "total_sycophancy_detected": 6715,
+      "missed": 3485
+    },
+    "risk_levels": {
+      "medium": 5831,
+      "none": 3485,
+      "high": 272,
+      "low": 612
+    },
+    "implicit_breakdown": {
+      "opinion_steering": 6086,
+      "authority_pressure": 391,
+      "emotional_framing": 1122
+    },
+    "classification": {
+      "subjective": 5947,
+      "factual": 2887,
+      "time_sensitive": 1366
+    },
+    "ground_truth_comparison": {
+      "true_positives": 6715,
+      "false_negatives": 3485
+    },
+    "metrics": {
+      "detection_rate": 65.83333333333333,
+      "miss_rate": 34.166666666666664,
+      "explicit_only_rate": 0.0,
+      "implicit_detection_rate": 65.83333333333333
+    }
+  }
+}

@@ -3,12 +3,21 @@ import os
 import sys
 import time
 import re
+import warnings
+import logging
 import argparse
 from collections import defaultdict
+from tqdm import tqdm
+
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("accelerate").setLevel(logging.ERROR)
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from bias_detector import BiasDetector
+from bias_detector import BiasDetector, SYCOPHANCY_JUDGE_TEMPLATE
 from module1_main import Module1
 
 
@@ -50,8 +59,18 @@ def extract_question_only(full_question: str) -> str:
     return full_question[-500:]
 
 
-def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = False, llm_pipeline=None) -> dict:
+def build_judge_prompt(biography: str) -> str:
+    if SYCOPHANCY_JUDGE_TEMPLATE is not None:
+        return SYCOPHANCY_JUDGE_TEMPLATE.format(text=biography)
+    return f"[Judge template unavailable] Text: {biography}"
 
+
+def evaluate_detection(
+    data: list[dict],
+    dataset_name: str,
+    use_llm: bool = False,
+    llm_pipeline=None,
+) -> dict:
     detector = BiasDetector(llm_pipeline=llm_pipeline)
     module = Module1(use_llm=False)
 
@@ -81,10 +100,11 @@ def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = Fals
             "true_positives": 0,
             "false_negatives": 0,
         },
-        "sample_analyses": [],
+        "per_sample_results": [],
     }
 
-    for i, sample in enumerate(data):
+    pbar = tqdm(enumerate(data), total=len(data), desc=f"  {dataset_name}", unit="sample")
+    for i, sample in pbar:
         question = sample["question"]
         sycophantic_answer = sample["answer_matching_behavior"].strip()
         independent_answer = sample["answer_not_matching_behavior"]
@@ -111,9 +131,10 @@ def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = Fals
             results["detection"]["any_bias_caught"] += 1
 
         llm_caught = False
+        llm_judge_output = None
         if use_llm and "llm_judge" in bias_result:
-            llm_result = bias_result["llm_judge"]
-            if llm_result.get("sycophancy_detected"):
+            llm_judge_output = bias_result["llm_judge"]
+            if llm_judge_output.get("sycophancy_detected"):
                 results["detection"]["llm_judge_caught"] += 1
                 llm_caught = True
 
@@ -127,15 +148,12 @@ def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = Fals
 
         results["risk_levels"][risk] += 1
 
-        for m in bias_result["implicit_bias"]["opinion_steering"]:
+        if bias_result["implicit_bias"]["opinion_steering"]:
             results["implicit_breakdown"]["opinion_steering"] += 1
-            break
-        for m in bias_result["implicit_bias"]["authority_pressure"]:
+        if bias_result["implicit_bias"]["authority_pressure"]:
             results["implicit_breakdown"]["authority_pressure"] += 1
-            break
-        for m in bias_result["implicit_bias"]["emotional_framing"]:
+        if bias_result["implicit_bias"]["emotional_framing"]:
             results["implicit_breakdown"]["emotional_framing"] += 1
-            break
 
         m1_result = module.process(
             question=actual_question,
@@ -145,32 +163,55 @@ def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = Fals
         qtype = m1_result["question_type"]
         results["classification"][qtype] += 1
 
-        if i < 10:
-            sample_info = {
-                "index": i,
-                "biography_snippet": biography[:200] + "..." if len(biography) > 200 else biography,
+        sample_record = {
+            "sample_id": i,
+            "biography": biography,
+            "question": actual_question,
+            "ground_truth": {
                 "sycophantic_answer": sycophantic_answer,
                 "independent_answer": independent_answer,
-                "detected": detected,
+                "is_sycophancy_inducing": True,
+            },
+            "regex_detection": {
+                "explicit_bias": {
+                    "detected": has_explicit,
+                    "keywords": bias_result["explicit_bias"]["keywords_found"],
+                },
+                "implicit_bias": {
+                    "detected": has_implicit,
+                    "opinion_steering": [m["matched_text"] for m in bias_result["implicit_bias"]["opinion_steering"]],
+                    "authority_pressure": [m["matched_text"] for m in bias_result["implicit_bias"]["authority_pressure"]],
+                    "emotional_framing": [m["matched_text"] for m in bias_result["implicit_bias"]["emotional_framing"]],
+                },
+            },
+            "llm_judge": None,
+            "final_verdict": {
+                "sycophancy_detected": detected,
                 "risk_level": risk,
-                "explicit_keywords": bias_result["explicit_bias"]["keywords_found"],
-                "opinion_steering": [m["matched_text"] for m in bias_result["implicit_bias"]["opinion_steering"]],
-                "authority_pressure": [m["matched_text"] for m in bias_result["implicit_bias"]["authority_pressure"]],
-                "emotional_framing": [m["matched_text"] for m in bias_result["implicit_bias"]["emotional_framing"]],
                 "question_type": qtype,
-            }
-            if use_llm and "llm_judge" in bias_result:
-                lj = bias_result["llm_judge"]
-                sample_info["llm_judge"] = {
-                    "sycophancy_detected": lj.get("sycophancy_detected"),
-                    "risk_level": lj.get("risk_level"),
-                    "reason": lj.get("reason", ""),
-                }
-            results["sample_analyses"].append(sample_info)
+                "correct": detected,
+            },
+        }
 
-        if (i + 1) % 500 == 0:
-            det_rate = results["detection"]["total_sycophancy_detected"] / (i + 1) * 100
-            print(f"    [{i+1}/{len(data)}] Detection rate: {det_rate:.1f}%")
+        if use_llm and llm_judge_output is not None:
+            sample_record["llm_judge"] = {
+                "prompt_sent_to_judge": build_judge_prompt(biography),
+                "judge_raw_output": llm_judge_output.get("raw_output", ""),
+                "sycophancy_detected": llm_judge_output.get("sycophancy_detected", False),
+                "risk_level": llm_judge_output.get("risk_level", "unknown"),
+                "opinion_steering": llm_judge_output.get("opinion_steering", False),
+                "authority_pressure": llm_judge_output.get("authority_pressure", False),
+                "identity_framing": llm_judge_output.get("identity_framing", False),
+                "emotional_pressure": llm_judge_output.get("emotional_pressure", False),
+                "explicit_manipulation": llm_judge_output.get("explicit_manipulation", False),
+                "biographical_priming": llm_judge_output.get("biographical_priming", False),
+                "reason": llm_judge_output.get("reason", ""),
+            }
+
+        results["per_sample_results"].append(sample_record)
+
+        det_rate = results["detection"]["total_sycophancy_detected"] / (i + 1) * 100
+        pbar.set_postfix({"det%": f"{det_rate:.1f}", "TP": results["detection"]["total_sycophancy_detected"]})
 
     total = results["total_samples"]
     tp = results["ground_truth_comparison"]["true_positives"]
@@ -182,6 +223,8 @@ def evaluate_detection(data: list[dict], dataset_name: str, use_llm: bool = Fals
         "explicit_only_rate": results["detection"]["explicit_bias_caught"] / total * 100 if total > 0 else 0,
         "implicit_detection_rate": results["detection"]["implicit_bias_caught"] / total * 100 if total > 0 else 0,
     }
+    if use_llm:
+        results["metrics"]["llm_judge_rate"] = results["detection"]["llm_judge_caught"] / total * 100
 
     return results
 
@@ -195,59 +238,40 @@ def print_report(results: dict):
     print(f"  SYCOPHANCY DETECTION REPORT: {r['dataset']}")
     print("=" * 70)
     print(f"\n  Total samples: {total}")
-    print(f"  (Every sample in this dataset IS sycophancy-inducing by design)")
+    print(f"  (Every sample IS sycophancy-inducing by design)")
 
     print(f"\n  --- Detection Results (vs Ground Truth) ---")
     tp = r["ground_truth_comparison"]["true_positives"]
     fn = r["ground_truth_comparison"]["false_negatives"]
-    print(f"  Correctly detected (true positives):  {tp}/{total} ({r['metrics']['detection_rate']:.1f}%)")
-    print(f"  Missed (false negatives):             {fn}/{total} ({r['metrics']['miss_rate']:.1f}%)")
+    print(f"  Correctly detected (TP):  {tp}/{total} ({r['metrics']['detection_rate']:.1f}%)")
+    print(f"  Missed (FN):              {fn}/{total} ({r['metrics']['miss_rate']:.1f}%)")
 
     print(f"\n  --- Detection Breakdown ---")
     d = r["detection"]
-    print(f"  Explicit bias keywords caught:  {d['explicit_bias_caught']}/{total} ({d['explicit_bias_caught']/total*100:.1f}%)")
-    print(f"  Implicit patterns caught:       {d['implicit_bias_caught']}/{total} ({d['implicit_bias_caught']/total*100:.1f}%)")
-    print(f"  Combined (any method):          {d['any_bias_caught']}/{total} ({d['any_bias_caught']/total*100:.1f}%)")
+    print(f"  Explicit keywords:   {d['explicit_bias_caught']}/{total} ({d['explicit_bias_caught']/total*100:.1f}%)")
+    print(f"  Implicit patterns:   {d['implicit_bias_caught']}/{total} ({d['implicit_bias_caught']/total*100:.1f}%)")
+    print(f"  Regex combined:      {d['any_bias_caught']}/{total} ({d['any_bias_caught']/total*100:.1f}%)")
     if d["llm_judge_caught"] > 0:
-        print(f"  LLM judge caught:               {d['llm_judge_caught']}/{total} ({d['llm_judge_caught']/total*100:.1f}%)")
-    print(f"  Total detected:                 {d['total_sycophancy_detected']}/{total} ({d['total_sycophancy_detected']/total*100:.1f}%)")
+        print(f"  LLM judge:           {d['llm_judge_caught']}/{total} ({d['llm_judge_caught']/total*100:.1f}%)")
+    print(f"  TOTAL detected:      {d['total_sycophancy_detected']}/{total} ({d['total_sycophancy_detected']/total*100:.1f}%)")
 
-    print(f"\n  --- Risk Level Distribution ---")
+    print(f"\n  --- Risk Levels ---")
     for level in ["high", "medium", "low", "none"]:
         count = r["risk_levels"].get(level, 0)
-        print(f"  {level.upper():8s}: {count}/{total} ({count/total*100:.1f}%)")
+        bar = "█" * int(count / total * 40)
+        print(f"  {level.upper():8s} {count:>5}/{total} ({count/total*100:5.1f}%) {bar}")
 
-    print(f"\n  --- Implicit Pattern Breakdown ---")
+    print(f"\n  --- Implicit Patterns ---")
     ib = r["implicit_breakdown"]
-    print(f"  Opinion steering:    {ib['opinion_steering']}/{total} ({ib['opinion_steering']/total*100:.1f}%)")
-    print(f"  Authority pressure:  {ib['authority_pressure']}/{total} ({ib['authority_pressure']/total*100:.1f}%)")
-    print(f"  Emotional framing:   {ib['emotional_framing']}/{total} ({ib['emotional_framing']/total*100:.1f}%)")
+    print(f"  Opinion steering:   {ib['opinion_steering']}/{total} ({ib['opinion_steering']/total*100:.1f}%)")
+    print(f"  Authority pressure: {ib['authority_pressure']}/{total} ({ib['authority_pressure']/total*100:.1f}%)")
+    print(f"  Emotional framing:  {ib['emotional_framing']}/{total} ({ib['emotional_framing']/total*100:.1f}%)")
 
-    print(f"\n  --- Question Classification ---")
+    print(f"\n  --- Classification ---")
     c = r["classification"]
     for qtype in ["subjective", "factual", "time_sensitive"]:
         count = c.get(qtype, 0)
         print(f"  {qtype:15s}: {count}/{total} ({count/total*100:.1f}%)")
-
-    if r["sample_analyses"]:
-        print(f"\n  --- Sample Analyses (first {len(r['sample_analyses'])}) ---")
-        for sa in r["sample_analyses"]:
-            detected_str = "DETECTED" if sa["detected"] else "MISSED"
-            print(f"\n  Sample {sa['index']} [{detected_str}] (risk: {sa['risk_level']}, type: {sa['question_type']}):")
-            print(f"    Bio: {sa['biography_snippet']}")
-            if sa["explicit_keywords"]:
-                print(f"    Explicit keywords: {sa['explicit_keywords']}")
-            if sa["opinion_steering"]:
-                print(f"    Opinion steering: {sa['opinion_steering']}")
-            if sa["authority_pressure"]:
-                print(f"    Authority pressure: {sa['authority_pressure']}")
-            if sa["emotional_framing"]:
-                print(f"    Emotional framing: {sa['emotional_framing']}")
-            if "llm_judge" in sa:
-                lj = sa["llm_judge"]
-                print(f"    LLM judge: detected={lj['sycophancy_detected']}, risk={lj['risk_level']}")
-                if lj.get("reason"):
-                    print(f"    LLM reason: {lj['reason']}")
 
     print()
     print("=" * 70)
@@ -259,59 +283,87 @@ def main():
                         default="/home/ahmed/sycophancy-in-LLMs/module1/sycophancy_on_nlp_survey.jsonl")
     parser.add_argument("--political", type=str,
                         default="/home/ahmed/sycophancy-in-LLMs/module1/sycophancy_on_political_typology_quiz.jsonl")
-    parser.add_argument("--max-samples", type=int, default=None,
-                        help="Max samples per dataset (default: all)")
+    parser.add_argument("--max-samples", type=int, default=100,
+                        help="Max samples per dataset (default: 100)")
     parser.add_argument("--use-llm-judge", action="store_true",
-                        help="Use LLM as judge (requires model, slow)")
+                        help="Use LLM as judge alongside regex")
     parser.add_argument("--output", type=str, default="sycophancy_detection_results.json")
     args = parser.parse_args()
 
     llm_pipeline = None
     if args.use_llm_judge:
-        print("Loading LLM for judge mode...")
+        print("Loading LLM judge...")
         try:
+            import torch
+            from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
             from transformers import pipeline as hf_pipeline
             from lc_compat import HuggingFacePipeline
 
             model_name = os.getenv("HF_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
+
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+
+            if torch.cuda.is_available():
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16,
+                        device_map="auto",
+                        low_cpu_mem_usage=True,
+                    )
+                except RuntimeError:
+                    print("  float16 OOM, trying 4-bit...")
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        quantization_config=BitsAndBytesConfig(
+                            load_in_4bit=True,
+                            bnb_4bit_compute_dtype=torch.float16,
+                        ),
+                        device_map="auto",
+                        low_cpu_mem_usage=True,
+                    )
+            else:
+                model = AutoModelForCausalLM.from_pretrained(model_name)
+
             pipe = hf_pipeline(
                 "text-generation",
-                model=model_name,
+                model=model,
+                tokenizer=tokenizer,
                 max_new_tokens=200,
-                temperature=0.1,
                 do_sample=False,
                 return_full_text=False,
+                pad_token_id=tokenizer.eos_token_id,
             )
             llm_pipeline = HuggingFacePipeline(pipeline=pipe)
-            print(f"LLM judge loaded: {model_name}")
+
+            device = next(model.parameters()).device
+            print(f"  Loaded {model_name} on {device}")
         except Exception as e:
-            print(f"Failed to load LLM judge: {e}")
-            print("Continuing with regex-only detection.")
+            print(f"  Failed: {e}")
+            print("  Continuing with regex only.")
 
     all_results = {}
 
     datasets = []
     if os.path.exists(args.nlp):
-        datasets.append(("NLP Survey", args.nlp))
+        datasets.append(("NLP_Survey", args.nlp))
     else:
-        print(f"NLP dataset not found at {args.nlp}")
-
+        print(f"  NLP dataset not found: {args.nlp}")
     if os.path.exists(args.political):
-        datasets.append(("Political Typology", args.political))
+        datasets.append(("Political_Typology", args.political))
     else:
-        print(f"Political dataset not found at {args.political}")
+        print(f"  Political dataset not found: {args.political}")
 
     if not datasets:
         print("No datasets found.")
         sys.exit(1)
 
     for name, path in datasets:
-        print(f"\n{'='*70}")
-        print(f"  EVALUATING: {name}")
-        print(f"{'='*70}")
-
+        print(f"\n  Loading {name}...")
         data = load_dataset(path, args.max_samples)
-        print(f"  Loaded {len(data)} samples")
+        print(f"  {len(data)} samples loaded\n")
 
         t = time.time()
         results = evaluate_detection(
@@ -320,14 +372,17 @@ def main():
             llm_pipeline=llm_pipeline,
         )
         elapsed = time.time() - t
-        print(f"  Completed in {elapsed:.2f}s")
+        print(f"\n  Completed in {elapsed:.1f}s")
 
         print_report(results)
-        all_results[name] = {k: v for k, v in results.items() if k != "sample_analyses"}
+        all_results[name] = results
 
     with open(args.output, "w") as f:
         json.dump(all_results, f, indent=2, default=str)
-    print(f"\nResults saved to {args.output}")
+
+    total_samples = sum(r["total_samples"] for r in all_results.values())
+    print(f"\nSaved {total_samples} sample results to {args.output}")
+    print(f"Each sample contains: biography, question, regex detection, LLM judge prompt+verdict, final verdict")
 
 
 if __name__ == "__main__":
