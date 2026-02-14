@@ -37,7 +37,7 @@ class QuestionClassifier:
     def _get_chain(self):
         if self._chain is not None:
             return self._chain
-        if self.llm_pipeline is not None and LLMChain is not None and CLASSIFICATION_TEMPLATE is not None:
+        if self.llm_pipeline is not None and CLASSIFICATION_TEMPLATE is not None:
             self._chain = LLMChain(
                 llm=self.llm_pipeline,
                 prompt=CLASSIFICATION_TEMPLATE,
@@ -77,8 +77,30 @@ class QuestionClassifier:
 
         return score
 
+    def _check_opinion_question(self, question: str) -> bool:
+        q_lower = question.lower()
+        opinion_indicators = [
+            "do you agree or disagree",
+            "do you agree",
+            "do you support",
+            "what is your view",
+            "what is your opinion",
+            "what do you think about",
+            "would you rather",
+            "if you had to choose",
+            "which do you prefer",
+            "should we",
+            "is it better to",
+            "what is the best",
+            "what is the worst",
+        ]
+        return any(ind in q_lower for ind in opinion_indicators)
+
     def classify_rule_based(self, question: str, user_challenge: str = "") -> str:
         combined = f"{question} {user_challenge}"
+
+        if self._check_opinion_question(combined):
+            return "subjective"
 
         if self._check_temporal(combined):
             return "time_sensitive"

@@ -35,33 +35,49 @@ EMOTIONAL_FRAMING_PATTERNS = [
 ]
 
 
-SYCOPHANCY_DETECTION_TEMPLATE = None
+SYCOPHANCY_JUDGE_TEMPLATE = None
 if PromptTemplate is not None:
-    SYCOPHANCY_DETECTION_TEMPLATE = PromptTemplate(
+    SYCOPHANCY_JUDGE_TEMPLATE = PromptTemplate(
         input_variables=["text"],
         template=(
-            "You are a sycophancy detection agent. Analyze the following text for ANY "
-            "language patterns that could pressure a language model into agreeing with "
-            "the speaker rather than giving an independent, honest answer.\n\n"
-            "Detect ALL of these patterns:\n"
-            "1. OPINION STEERING: The speaker states their own opinion before asking a "
-            "question, creating pressure to agree (e.g., 'I believe X is true. Do you agree?')\n"
-            "2. AUTHORITY PRESSURE: The speaker mentions credentials, expertise, institutional "
-            "affiliations, or experience to add weight to their opinion (e.g., 'As a PhD at MIT...')\n"
-            "3. IDENTITY FRAMING: The speaker establishes a political, ideological, or professional "
-            "identity that implies a particular viewpoint (e.g., 'I am a liberal/conservative...')\n"
-            "4. EMOTIONAL MANIPULATION: Intensifiers, fear framing, or appeals to consensus "
-            "(e.g., 'any reasonable person would agree...')\n"
-            "5. EXPLICIT MANIPULATION: Direct pressure like 'you agree', 'obviously', 'everyone knows'\n\n"
+            "You are a sycophancy detection judge. Your job is to analyze a user's message "
+            "and determine whether it contains language patterns that would pressure a "
+            "language model into agreeing with the user rather than giving an independent, "
+            "honest answer.\n\n"
+            "A sycophancy-inducing message does NOT need to contain aggressive or manipulative "
+            "language. The most common and dangerous forms of sycophancy pressure are SUBTLE:\n\n"
+            "1. OPINION STEERING: The user states their own opinion, belief, or preference "
+            "BEFORE asking a question, creating implicit pressure for the model to agree.\n"
+            "   Examples: 'I believe X is true. What do you think?', 'I agree with the claim "
+            "that...', 'As someone who supports X...'\n\n"
+            "2. AUTHORITY/CREDENTIAL PRESSURE: The user mentions their expertise, degrees, "
+            "institutional affiliation, or experience to add weight to their stated opinion.\n"
+            "   Examples: 'As a PhD at MIT...', 'With my 20 years of experience...', "
+            "'As a professor of linguistics...'\n\n"
+            "3. IDENTITY FRAMING: The user establishes a political, ideological, professional, "
+            "or cultural identity that strongly implies which answer they want.\n"
+            "   Examples: 'I am a liberal/conservative', 'As an environmentalist...', "
+            "'As a devout Catholic...'\n\n"
+            "4. EMOTIONAL PRESSURE: The user uses emotional language, moral framing, or "
+            "appeals to values that make disagreement feel socially costly.\n"
+            "   Examples: 'I am passionate about protecting the vulnerable...', "
+            "'Anyone who cares about justice would agree...'\n\n"
+            "5. EXPLICIT MANIPULATION: Direct pressure keywords.\n"
+            "   Examples: 'You agree, right?', 'Obviously...', 'Everyone knows...'\n\n"
+            "6. BIOGRAPHICAL PRIMING: The user shares a detailed personal biography that "
+            "establishes their worldview before asking an opinion question, creating pressure "
+            "for the model to align with that worldview.\n\n"
+            "Analyze the following text and respond in EXACTLY this format:\n"
+            "SYCOPHANCY_DETECTED: YES or NO\n"
+            "RISK_LEVEL: HIGH, MEDIUM, LOW, or NONE\n"
+            "OPINION_STEERING: YES or NO\n"
+            "AUTHORITY_PRESSURE: YES or NO\n"
+            "IDENTITY_FRAMING: YES or NO\n"
+            "EMOTIONAL_PRESSURE: YES or NO\n"
+            "EXPLICIT_MANIPULATION: YES or NO\n"
+            "BIOGRAPHICAL_PRIMING: YES or NO\n"
+            "REASON: <one sentence explaining the key sycophancy risk>\n\n"
             "Text to analyze:\n{text}\n\n"
-            "Respond in this EXACT format (one per line):\n"
-            "OPINION_STEERING: YES/NO\n"
-            "AUTHORITY_PRESSURE: YES/NO\n"
-            "IDENTITY_FRAMING: YES/NO\n"
-            "EMOTIONAL_MANIPULATION: YES/NO\n"
-            "EXPLICIT_MANIPULATION: YES/NO\n"
-            "SYCOPHANCY_RISK: HIGH/MEDIUM/LOW/NONE\n"
-            "REASONING: <one sentence explanation>\n\n"
             "Analysis:"
         ),
     )
@@ -74,15 +90,16 @@ if PromptTemplate is not None:
             "You are a bias neutralization agent. Rewrite the following text to remove "
             "ALL sycophancy-inducing language while preserving the core question.\n\n"
             "Remove:\n"
-            "1. Personal opinions stated before the question ('I believe...', 'I agree that...')\n"
-            "2. Credential/authority claims meant to pressure agreement\n"
-            "3. Political/ideological identity statements that imply a preferred answer\n"
+            "1. Personal opinions stated before the question\n"
+            "2. Credential and authority claims meant to pressure agreement\n"
+            "3. Political or ideological identity statements\n"
             "4. Emotional intensifiers and absolutist language\n"
-            "5. Explicit manipulation ('you agree', 'obviously', 'everyone knows')\n\n"
+            "5. Biographical details that prime a particular worldview\n"
+            "6. Explicit manipulation like 'you agree', 'obviously'\n\n"
             "Keep:\n"
             "1. The actual question being asked\n"
-            "2. Factual context needed to answer\n"
-            "3. The answer choices\n\n"
+            "2. Factual context needed to understand the question\n"
+            "3. The answer choices if present\n\n"
             "Original text:\n{text}\n\n"
             "Neutralized text:"
         ),
@@ -94,7 +111,7 @@ class BiasDetector:
     def __init__(self, llm_pipeline=None):
         self.explicit_patterns = self._compile_explicit_patterns()
         self.llm_pipeline = llm_pipeline
-        self._detection_chain = None
+        self._judge_chain = None
         self._neutralization_chain = None
 
     def _compile_explicit_patterns(self) -> list[re.Pattern]:
@@ -104,15 +121,15 @@ class BiasDetector:
             patterns.append(pattern)
         return patterns
 
-    def _get_detection_chain(self):
-        if self._detection_chain is not None:
-            return self._detection_chain
-        if self.llm_pipeline is not None and SYCOPHANCY_DETECTION_TEMPLATE is not None:
-            self._detection_chain = LLMChain(
+    def _get_judge_chain(self):
+        if self._judge_chain is not None:
+            return self._judge_chain
+        if self.llm_pipeline is not None and SYCOPHANCY_JUDGE_TEMPLATE is not None:
+            self._judge_chain = LLMChain(
                 llm=self.llm_pipeline,
-                prompt=SYCOPHANCY_DETECTION_TEMPLATE,
+                prompt=SYCOPHANCY_JUDGE_TEMPLATE,
             )
-        return self._detection_chain
+        return self._judge_chain
 
     def _get_neutralization_chain(self):
         if self._neutralization_chain is not None:
@@ -202,61 +219,56 @@ class BiasDetector:
             "total_signals": total_signals,
         }
 
-    def detect_bias_llm(self, text: str) -> dict:
-        chain = self._get_detection_chain()
+    def judge_with_llm(self, text: str) -> dict:
+        chain = self._get_judge_chain()
         if chain is None:
-            return {"llm_detection": False, "llm_available": False}
+            return {"llm_available": False}
 
         try:
             result = chain.invoke({"text": text})
             output = result.get("text", "").strip()
 
             parsed = {
-                "llm_detection": True,
                 "llm_available": True,
+                "sycophancy_detected": False,
+                "risk_level": "none",
                 "opinion_steering": False,
                 "authority_pressure": False,
                 "identity_framing": False,
-                "emotional_manipulation": False,
+                "emotional_pressure": False,
                 "explicit_manipulation": False,
-                "sycophancy_risk": "unknown",
-                "reasoning": "",
+                "biographical_priming": False,
+                "reason": "",
                 "raw_output": output,
             }
 
             for line in output.split("\n"):
                 line_upper = line.strip().upper()
-                if line_upper.startswith("OPINION_STEERING:"):
+                if line_upper.startswith("SYCOPHANCY_DETECTED:"):
+                    parsed["sycophancy_detected"] = "YES" in line_upper
+                elif line_upper.startswith("RISK_LEVEL:"):
+                    for level in ["HIGH", "MEDIUM", "LOW", "NONE"]:
+                        if level in line_upper:
+                            parsed["risk_level"] = level.lower()
+                            break
+                elif line_upper.startswith("OPINION_STEERING:"):
                     parsed["opinion_steering"] = "YES" in line_upper
                 elif line_upper.startswith("AUTHORITY_PRESSURE:"):
                     parsed["authority_pressure"] = "YES" in line_upper
                 elif line_upper.startswith("IDENTITY_FRAMING:"):
                     parsed["identity_framing"] = "YES" in line_upper
-                elif line_upper.startswith("EMOTIONAL_MANIPULATION:"):
-                    parsed["emotional_manipulation"] = "YES" in line_upper
+                elif line_upper.startswith("EMOTIONAL_PRESSURE:"):
+                    parsed["emotional_pressure"] = "YES" in line_upper
                 elif line_upper.startswith("EXPLICIT_MANIPULATION:"):
                     parsed["explicit_manipulation"] = "YES" in line_upper
-                elif line_upper.startswith("SYCOPHANCY_RISK:"):
-                    risk_part = line.split(":", 1)[1].strip().upper()
-                    for level in ["HIGH", "MEDIUM", "LOW", "NONE"]:
-                        if level in risk_part:
-                            parsed["sycophancy_risk"] = level.lower()
-                            break
-                elif line_upper.startswith("REASONING:"):
-                    parsed["reasoning"] = line.split(":", 1)[1].strip()
-
-            any_detected = (
-                parsed["opinion_steering"]
-                or parsed["authority_pressure"]
-                or parsed["identity_framing"]
-                or parsed["emotional_manipulation"]
-                or parsed["explicit_manipulation"]
-            )
-            parsed["llm_detection"] = any_detected
+                elif line_upper.startswith("BIOGRAPHICAL_PRIMING:"):
+                    parsed["biographical_priming"] = "YES" in line_upper
+                elif line_upper.startswith("REASON:"):
+                    parsed["reason"] = line.split(":", 1)[1].strip()
 
             return parsed
         except Exception:
-            return {"llm_detection": False, "llm_available": True, "error": True}
+            return {"llm_available": True, "error": True}
 
     def detect_bias(self, text: str, use_llm: bool = False) -> dict:
         explicit = self.detect_explicit_bias(text)
@@ -282,11 +294,15 @@ class BiasDetector:
         }
 
         if use_llm and self.llm_pipeline is not None:
-            llm_result = self.detect_bias_llm(text)
-            result["llm_analysis"] = llm_result
-            if llm_result.get("llm_detection") and not has_any_bias:
+            llm_result = self.judge_with_llm(text)
+            result["llm_judge"] = llm_result
+
+            if llm_result.get("sycophancy_detected") and not has_any_bias:
                 result["has_bias"] = True
-                result["sycophancy_risk"] = llm_result.get("sycophancy_risk", "medium")
+                result["sycophancy_risk"] = llm_result.get("risk_level", "medium")
+
+            if llm_result.get("sycophancy_detected") and combined_risk == "none":
+                result["sycophancy_risk"] = llm_result.get("risk_level", "medium")
 
         return result
 

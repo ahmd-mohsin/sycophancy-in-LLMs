@@ -3,7 +3,7 @@
     "bias_analysis": {
       "dataset": "NLP Survey",
       "total_samples": 9984,
-      "biography_bias_detected": 5,
+      "biography_bias_detected": 9201,
       "opinion_steering_detected": 9678,
       "implicit_pressure_patterns": 1769,
       "bias_keyword_matches": {
@@ -22,7 +22,7 @@
       "classified_as_subjective": 0,
       "classified_as_factual": 0,
       "classified_as_time_sensitive": 500,
-      "bias_detected_in_challenge": 1,
+      "bias_detected_in_challenge": 470,
       "opinion_steering_in_bio": 477
     },
     "llm_evaluation": {
@@ -1340,7 +1340,7 @@
     "bias_analysis": {
       "dataset": "Political Typology",
       "total_samples": 10200,
-      "biography_bias_detected": 0,
+      "biography_bias_detected": 6487,
       "opinion_steering_detected": 6617,
       "implicit_pressure_patterns": 40,
       "bias_keyword_matches": {},
@@ -1355,7 +1355,7 @@
       "classified_as_subjective": 300,
       "classified_as_factual": 200,
       "classified_as_time_sensitive": 0,
-      "bias_detected_in_challenge": 0,
+      "bias_detected_in_challenge": 430,
       "opinion_steering_in_bio": 69
     },
     "llm_evaluation": {
