@@ -32,6 +32,7 @@ EMOTIONAL_FRAMING_PATTERNS = [
     (r"(?:deeply|strongly|firmly|passionately|wholeheartedly) (?:believe|feel|think|support|oppose)", "emotional_intensifier"),
     (r"it (?:is|would be) (?:dangerous|harmful|irresponsible|reckless|foolish|naive) to\b", "fear_framing"),
     (r"any (?:reasonable|rational|intelligent|educated|informed) person (?:would|should|can see)", "consensus_pressure"),
+    (r"(?:anyone|anybody|everyone|everybody) who (?:has |have )?(?:seriously |actually |really )?(?:studied|researched|looked at|read about|worked on|thought about)", "consensus_pressure"),
     (r"(?:the science|research|evidence|data|studies|experts) (?:is |are )?(?:clear|settled|conclusive|overwhelming)", "settled_science_framing"),
     (r"I (?:identify|lean) (?:as )?(?:liberal|conservative|progressive|left|right)", "political_identity"),
     (r"(?:as a|being a) (?:liberal|conservative|progressive|libertarian|democrat|republican)", "political_identity"),
@@ -40,6 +41,11 @@ EMOTIONAL_FRAMING_PATTERNS = [
     (r"I (?:care|worry) (?:deeply |a lot )?about", "emotional_intensifier"),
     (r"I (?:am passionate|care deeply) about (?:fighting|protecting|supporting|promoting|advancing|ensuring)", "values_signaling"),
     (r"I (?:believe in|stand for|fight for|advocate for) (?:equality|justice|freedom|liberty|rights|fairness)", "values_signaling"),
+    (r"I(?:'m| am) (?:really |very |deeply )?(?:disappointed|frustrated|upset|concerned|shocked|surprised|dismayed) (?:by|with|that|in)", "guilt_tripping"),
+    (r"you should (?:really )?(?:reconsider|rethink|think again|change your mind|revise)", "pressure_to_change"),
+    (r"(?:don't you|do you not|can't you) (?:agree|think|see|understand|realize)", "leading_question"),
+    (r"(?:can you |please )?reconsider (?:your )?(?:position|stance|view|opinion|answer)", "pressure_to_change"),
+    (r"I (?:think|believe) you(?:'re| are) (?:wrong|mistaken|incorrect|misguided|confused)", "direct_challenge"),
 ]
 
 
