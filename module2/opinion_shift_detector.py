@@ -5,6 +5,9 @@ from module2.lc_compat import LLMChain
 from module2.prompts.subjective_reasoning import (
     OPINION_SHIFT_JUDGE_PROMPT,
     SUBSTANCE_EVALUATOR_PROMPT,
+    CLEAN_EVALUATION_PROMPT,
+    PRESSURED_EVALUATION_PROMPT,
+    UNBIASED_OPINION_PROMPT,
 )
 from module2.config import (
     HIGH_PRESSURE_RISK_LEVELS,
@@ -19,26 +22,34 @@ class OpinionShiftDetector:
         self.llm_pipeline = llm_pipeline
         self._judge_chain = None
         self._substance_chain = None
+        self._clean_eval_chain = None
+        self._pressured_eval_chain = None
+        self._unbiased_chain = None
+
+    def _get_chain(self, attr_name, prompt_template):
+        cached = getattr(self, attr_name, None)
+        if cached is not None:
+            return cached
+        if self.llm_pipeline is not None and prompt_template is not None:
+            chain = LLMChain(llm=self.llm_pipeline, prompt=prompt_template)
+            setattr(self, attr_name, chain)
+            return chain
+        return None
 
     def _get_judge_chain(self):
-        if self._judge_chain is not None:
-            return self._judge_chain
-        if self.llm_pipeline is not None and OPINION_SHIFT_JUDGE_PROMPT is not None:
-            self._judge_chain = LLMChain(
-                llm=self.llm_pipeline,
-                prompt=OPINION_SHIFT_JUDGE_PROMPT,
-            )
-        return self._judge_chain
+        return self._get_chain("_judge_chain", OPINION_SHIFT_JUDGE_PROMPT)
 
     def _get_substance_chain(self):
-        if self._substance_chain is not None:
-            return self._substance_chain
-        if self.llm_pipeline is not None and SUBSTANCE_EVALUATOR_PROMPT is not None:
-            self._substance_chain = LLMChain(
-                llm=self.llm_pipeline,
-                prompt=SUBSTANCE_EVALUATOR_PROMPT,
-            )
-        return self._substance_chain
+        return self._get_chain("_substance_chain", SUBSTANCE_EVALUATOR_PROMPT)
+
+    def _get_clean_eval_chain(self):
+        return self._get_chain("_clean_eval_chain", CLEAN_EVALUATION_PROMPT)
+
+    def _get_pressured_eval_chain(self):
+        return self._get_chain("_pressured_eval_chain", PRESSURED_EVALUATION_PROMPT)
+
+    def _get_unbiased_chain(self):
+        return self._get_chain("_unbiased_chain", UNBIASED_OPINION_PROMPT)
 
     def analyze_pressure(self, bias_info: dict) -> dict:
         risk_level = bias_info.get("sycophancy_risk", "none")
@@ -53,18 +64,9 @@ class OpinionShiftDetector:
             pressure_types.append(match.get("pattern", "emotional_framing"))
 
         llm_judge = bias_info.get("llm_judge", {})
-        if llm_judge.get("opinion_steering"):
-            if "opinion_steering" not in pressure_types:
-                pressure_types.append("opinion_steering")
-        if llm_judge.get("authority_pressure"):
-            if "authority_pressure" not in pressure_types:
-                pressure_types.append("authority_pressure")
-        if llm_judge.get("emotional_pressure"):
-            if "emotional_pressure" not in pressure_types:
-                pressure_types.append("emotional_pressure")
-        if llm_judge.get("identity_framing"):
-            if "identity_framing" not in pressure_types:
-                pressure_types.append("identity_framing")
+        for key in ("opinion_steering", "authority_pressure", "emotional_pressure", "identity_framing"):
+            if llm_judge.get(key) and key not in pressure_types:
+                pressure_types.append(key)
 
         pressure_only_types = [p for p in pressure_types if p in PRESSURE_TYPES_REQUIRING_SUBSTANCE]
         substantive_types = [p for p in pressure_types if p in SUBSTANTIVE_SIGNAL_TYPES]
@@ -165,15 +167,149 @@ class OpinionShiftDetector:
         except Exception:
             return self.evaluate_substance_regex(raw_challenge, pressure_types)
 
+    def _parse_evaluation_output(self, output: str) -> dict:
+        parsed = {"assessment": "PARTIAL", "position": "", "reasoning": ""}
+        for line in output.split("\n"):
+            stripped = line.strip()
+            upper = stripped.upper()
+            if upper.startswith("ASSESSMENT:"):
+                value = upper.split(":", 1)[1].strip()
+                for a in ["AGREE", "DISAGREE", "PARTIAL"]:
+                    if a in value:
+                        parsed["assessment"] = a
+                        break
+            elif upper.startswith("POSITION:"):
+                parsed["position"] = stripped.split(":", 1)[1].strip()
+            elif upper.startswith("REASONING:"):
+                parsed["reasoning"] = stripped.split(":", 1)[1].strip()
+        return parsed
+
+    def dual_evaluate_llm(self, question: str, clean_challenge: str, raw_challenge: str) -> dict:
+        clean_chain = self._get_clean_eval_chain()
+        pressured_chain = self._get_pressured_eval_chain()
+
+        if clean_chain is None or pressured_chain is None:
+            return self.dual_evaluate_regex(question, clean_challenge, raw_challenge)
+
+        try:
+            clean_result = clean_chain.invoke({
+                "question": question,
+                "clean_challenge": clean_challenge,
+            })
+            clean_parsed = self._parse_evaluation_output(clean_result.get("text", ""))
+
+            pressured_result = pressured_chain.invoke({
+                "question": question,
+                "raw_challenge": raw_challenge,
+            })
+            pressured_parsed = self._parse_evaluation_output(pressured_result.get("text", ""))
+
+            outputs_differ = clean_parsed["assessment"] != pressured_parsed["assessment"]
+
+            return {
+                "clean_evaluation": clean_parsed,
+                "pressured_evaluation": pressured_parsed,
+                "outputs_differ": outputs_differ,
+                "sycophancy_signal": outputs_differ,
+                "method": "llm",
+            }
+        except Exception:
+            return self.dual_evaluate_regex(question, clean_challenge, raw_challenge)
+
+    def dual_evaluate_regex(self, question: str, clean_challenge: str, raw_challenge: str) -> dict:
+        clean_word_count = len(clean_challenge.split())
+        raw_word_count = len(raw_challenge.split())
+        reduction_ratio = 1 - (clean_word_count / max(raw_word_count, 1))
+
+        pressure_keywords = [
+            "professor", "phd", "expert", "obviously", "clearly",
+            "everyone knows", "are you sure", "you're wrong",
+            "disappointed", "any reasonable person",
+        ]
+        pressure_word_count = sum(
+            1 for kw in pressure_keywords if kw in raw_challenge.lower()
+        )
+
+        significant_pressure = pressure_word_count >= 2 or (reduction_ratio > 0.4 and pressure_word_count >= 1)
+
+        return {
+            "clean_evaluation": {
+                "assessment": "PARTIAL",
+                "position": clean_challenge[:100],
+                "reasoning": "Regex mode: cannot evaluate substance without LLM",
+            },
+            "pressured_evaluation": {
+                "assessment": "AGREE" if significant_pressure else "PARTIAL",
+                "position": raw_challenge[:100],
+                "reasoning": f"Regex detected {pressure_word_count} pressure keywords, {reduction_ratio:.0%} content reduction",
+            },
+            "outputs_differ": significant_pressure,
+            "sycophancy_signal": significant_pressure,
+            "method": "regex",
+        }
+
+    def generate_unbiased_opinion_llm(
+        self, question: str, claim_a: str, claim_b: str, sycophancy_analysis: str
+    ) -> dict:
+        chain = self._get_unbiased_chain()
+        if chain is None:
+            return self.generate_unbiased_opinion_regex(claim_a, claim_b)
+
+        try:
+            result = chain.invoke({
+                "question": question,
+                "claim_a": claim_a,
+                "claim_b": claim_b,
+                "sycophancy_analysis": sycophancy_analysis,
+            })
+            output = result.get("text", "").strip()
+
+            parsed = {
+                "unbiased_position": "",
+                "claim_a_merit": "",
+                "claim_b_merit": "",
+                "recommendation": "BALANCED",
+                "raw_output": output,
+                "method": "llm",
+            }
+
+            for line in output.split("\n"):
+                stripped = line.strip()
+                upper = stripped.upper()
+                if upper.startswith("UNBIASED_POSITION:"):
+                    parsed["unbiased_position"] = stripped.split(":", 1)[1].strip()
+                elif upper.startswith("CLAIM_A_MERIT:"):
+                    parsed["claim_a_merit"] = stripped.split(":", 1)[1].strip()
+                elif upper.startswith("CLAIM_B_MERIT:"):
+                    parsed["claim_b_merit"] = stripped.split(":", 1)[1].strip()
+                elif upper.startswith("RECOMMENDATION:"):
+                    value = upper.split(":", 1)[1].strip()
+                    for r in ["FAVOR_A", "FAVOR_B", "BALANCED"]:
+                        if r in value:
+                            parsed["recommendation"] = r
+                            break
+
+            return parsed
+        except Exception:
+            return self.generate_unbiased_opinion_regex(claim_a, claim_b)
+
+    def generate_unbiased_opinion_regex(self, claim_a: str, claim_b: str) -> dict:
+        return {
+            "unbiased_position": f"Both perspectives have merit. Position A: {claim_a[:80]}. Position B: {claim_b[:80]}.",
+            "claim_a_merit": claim_a[:100],
+            "claim_b_merit": claim_b[:100],
+            "recommendation": "BALANCED",
+            "method": "regex",
+        }
+
     def judge_shift_regex(self, pressure_analysis: dict, substance_analysis: dict) -> dict:
         is_high_pressure = pressure_analysis["is_high_pressure"]
-        is_pressure_only = pressure_analysis["is_pressure_only"]
         has_substance = substance_analysis.get("has_substance", False)
         pressure_dominant = substance_analysis.get("pressure_dominant", False)
 
         if is_high_pressure and not has_substance:
             sycophancy_likely = True
-            recommendation = "maintain_original"
+            recommendation = "generate_unbiased"
             reasoning = "High sycophancy pressure detected without substantive new information"
         elif is_high_pressure and has_substance and not pressure_dominant:
             sycophancy_likely = False
@@ -181,15 +317,15 @@ class OpinionShiftDetector:
             reasoning = "Pressure detected but user provided substantive arguments"
         elif is_high_pressure and has_substance and pressure_dominant:
             sycophancy_likely = True
-            recommendation = "maintain_original"
+            recommendation = "generate_unbiased"
             reasoning = "High pressure dominates despite some substantive content"
         elif has_substance and not is_high_pressure:
             sycophancy_likely = False
             recommendation = "accept_correction" if substance_analysis.get("substance_count", 0) >= 2 else "acknowledge_both"
             reasoning = "User provided substantive arguments without significant pressure"
-        elif is_pressure_only and not has_substance:
+        elif pressure_analysis["is_pressure_only"] and not has_substance:
             sycophancy_likely = True
-            recommendation = "maintain_original"
+            recommendation = "generate_unbiased"
             reasoning = "User relied on pressure tactics without new information"
         else:
             sycophancy_likely = False
@@ -205,11 +341,7 @@ class OpinionShiftDetector:
         }
 
     def judge_shift_llm(
-        self,
-        claim_a: str,
-        claim_b: str,
-        pressure_analysis: dict,
-        substance_analysis: dict,
+        self, claim_a: str, claim_b: str, pressure_analysis: dict, substance_analysis: dict
     ) -> dict:
         chain = self._get_judge_chain()
         if chain is None:
@@ -244,7 +376,7 @@ class OpinionShiftDetector:
                 elif upper.startswith("RECOMMENDATION:"):
                     value = upper.split(":", 1)[1].strip()
                     if "MAINTAIN" in value:
-                        parsed["recommendation"] = "maintain_original"
+                        parsed["recommendation"] = "generate_unbiased"
                     elif "ACCEPT" in value:
                         parsed["recommendation"] = "accept_correction"
                     else:
@@ -260,6 +392,7 @@ class OpinionShiftDetector:
         claim_b: str,
         bias_info: dict,
         raw_challenge: str = "",
+        question: str = "",
         use_llm: bool = True,
     ) -> dict:
         pressure_analysis = self.analyze_pressure(bias_info)
@@ -274,14 +407,44 @@ class OpinionShiftDetector:
             )
 
         if use_llm and self.llm_pipeline is not None:
+            dual_eval = self.dual_evaluate_llm(question, claim_b, raw_challenge)
+        else:
+            dual_eval = self.dual_evaluate_regex(question, claim_b, raw_challenge)
+
+        if use_llm and self.llm_pipeline is not None:
             shift_judgment = self.judge_shift_llm(
                 claim_a, claim_b, pressure_analysis, substance_analysis
             )
         else:
             shift_judgment = self.judge_shift_regex(pressure_analysis, substance_analysis)
 
+        if (
+            dual_eval["sycophancy_signal"]
+            and not shift_judgment["sycophancy_likely"]
+            and pressure_analysis["is_high_pressure"]
+        ):
+            shift_judgment["sycophancy_likely"] = True
+            shift_judgment["recommendation"] = "generate_unbiased"
+            shift_judgment["reasoning"] += " (dual-evaluation divergence detected)"
+
+        unbiased_output = None
+        if shift_judgment["sycophancy_likely"]:
+            sycophancy_summary = (
+                f"Pressure types: {', '.join(pressure_analysis['pressure_types'])}. "
+                f"Risk: {pressure_analysis['sycophancy_risk']}. "
+                f"Dual-eval divergence: {dual_eval['sycophancy_signal']}."
+            )
+            if use_llm and self.llm_pipeline is not None:
+                unbiased_output = self.generate_unbiased_opinion_llm(
+                    question, claim_a, claim_b, sycophancy_summary
+                )
+            else:
+                unbiased_output = self.generate_unbiased_opinion_regex(claim_a, claim_b)
+
         return {
             "pressure_analysis": pressure_analysis,
             "substance_analysis": substance_analysis,
+            "dual_evaluation": dual_eval,
             "shift_judgment": shift_judgment,
+            "unbiased_output": unbiased_output,
         }

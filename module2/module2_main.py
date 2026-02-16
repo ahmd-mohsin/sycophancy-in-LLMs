@@ -1,10 +1,10 @@
 import sys
 from typing import Optional
 
-from module2.factual_verifier import FactualVerifier
-from module2.time_sensitive_verifier import TimeSensitiveVerifier
-from module2.subjective_verifier import SubjectiveVerifier
-from module2.conversation_summarizer import ConversationSummarizer
+from factual_verifier import FactualVerifier
+from time_sensitive_verifier import TimeSensitiveVerifier
+from subjective_verifier import SubjectiveVerifier
+from conversation_summarizer import ConversationSummarizer
 
 
 class Module2:

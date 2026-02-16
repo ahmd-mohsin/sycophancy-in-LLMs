@@ -4,7 +4,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from module2.module2_main import Module2
+from module2_main import Module2
 
 
 def run_single_example():

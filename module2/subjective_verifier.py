@@ -1,6 +1,6 @@
-from module2.opinion_shift_detector import OpinionShiftDetector
-from module2.conversation_summarizer import ConversationSummarizer
-from module2.config import SUBJECTIVE_MAX_CONFIDENCE
+from opinion_shift_detector import OpinionShiftDetector
+from conversation_summarizer import ConversationSummarizer
+from config import SUBJECTIVE_MAX_CONFIDENCE
 
 
 class SubjectiveVerifier:
@@ -17,6 +17,7 @@ class SubjectiveVerifier:
         bias_info: dict,
         context_summary: dict = None,
         raw_challenge: str = "",
+        question: str = "",
         conversation_history: list = None,
         use_llm: bool = True,
     ) -> dict:
@@ -31,23 +32,37 @@ class SubjectiveVerifier:
             claim_b=claim_b,
             bias_info=bias_info,
             raw_challenge=raw_challenge,
+            question=question,
             use_llm=use_llm and self.llm_pipeline is not None,
         )
 
         shift_judgment = shift_result["shift_judgment"]
         pressure_analysis = shift_result["pressure_analysis"]
+        dual_eval = shift_result["dual_evaluation"]
+        unbiased_output = shift_result["unbiased_output"]
 
-        sycophancy_likely = shift_judgment["sycophancy_likely"]
+        sycophancy_detected = shift_judgment["sycophancy_likely"]
         recommendation = shift_judgment["recommendation"]
 
         if conv_summary.get("position_shifted", False) and pressure_analysis["is_high_pressure"]:
-            sycophancy_likely = True
-            if recommendation != "maintain_original":
-                recommendation = "maintain_original"
+            sycophancy_detected = True
+            if recommendation not in ("generate_unbiased",):
+                recommendation = "generate_unbiased"
 
-        if sycophancy_likely:
-            selected_source = "claim_A"
-            selected_claim = claim_a
+        if sycophancy_detected and unbiased_output is not None:
+            unbiased_rec = unbiased_output.get("recommendation", "BALANCED")
+            if unbiased_rec == "FAVOR_A":
+                selected_source = "claim_A"
+                selected_claim = claim_a
+            elif unbiased_rec == "FAVOR_B":
+                selected_source = "claim_B"
+                selected_claim = claim_b
+            else:
+                selected_source = "both_valid"
+                selected_claim = unbiased_output.get("unbiased_position", claim_a)
+        elif sycophancy_detected and unbiased_output is None:
+            selected_source = "both_valid"
+            selected_claim = f"Both perspectives have merit. Position A: {claim_a[:80]}. Position B: {claim_b[:80]}."
         elif recommendation == "accept_correction":
             selected_source = "claim_B"
             selected_claim = claim_b
@@ -55,19 +70,16 @@ class SubjectiveVerifier:
             selected_source = "both_valid"
             selected_claim = claim_a
         else:
-            selected_source = "claim_A"
+            selected_source = "both_valid"
             selected_claim = claim_a
 
-        raw_confidence = 0.7 if sycophancy_likely else 0.5
-        if pressure_analysis["is_high_pressure"] and pressure_analysis["is_pressure_only"]:
-            raw_confidence = 0.8
+        if sycophancy_detected:
+            raw_confidence = 0.7
+            if pressure_analysis["is_high_pressure"] and dual_eval.get("sycophancy_signal"):
+                raw_confidence = 0.8
+        else:
+            raw_confidence = 0.5
         confidence = min(raw_confidence, SUBJECTIVE_MAX_CONFIDENCE)
-
-        acknowledge_alternative = (
-            not sycophancy_likely
-            or recommendation == "acknowledge_both"
-            or shift_result["substance_analysis"].get("has_substance", False)
-        )
 
         return {
             "verification_type": "subjective",
@@ -80,23 +92,25 @@ class SubjectiveVerifier:
                     "pressure_types": pressure_analysis["pressure_types"],
                     "substantive_new_info": shift_result["substance_analysis"].get("has_substance", False),
                 },
+                "dual_evaluation": {
+                    "clean_assessment": dual_eval.get("clean_evaluation", {}).get("assessment", ""),
+                    "pressured_assessment": dual_eval.get("pressured_evaluation", {}).get("assessment", ""),
+                    "outputs_differ": dual_eval.get("outputs_differ", False),
+                    "sycophancy_signal": dual_eval.get("sycophancy_signal", False),
+                },
                 "shift_analysis": {
-                    "original_position_clear": True,
-                    "would_shift_be_sycophantic": sycophancy_likely,
+                    "sycophancy_detected": sycophancy_detected,
                     "shift_reasoning": shift_judgment["reasoning"],
                 },
-                "llm_judge_verdict": {
-                    "sycophancy_likely": sycophancy_likely,
-                    "reasoning": shift_judgment["reasoning"],
-                },
+                "unbiased_output": unbiased_output,
                 "conversation_summary": conv_summary,
             },
-            "sycophancy_detected": sycophancy_likely,
+            "sycophancy_detected": sycophancy_detected,
             "recommendation": recommendation,
-            "acknowledge_alternative": acknowledge_alternative,
+            "unbiased_response": unbiased_output,
             "suggested_response_strategy": (
-                "Maintain position while acknowledging the user's perspective as valid."
-                if sycophancy_likely
-                else "Consider both perspectives and provide a balanced response."
+                "Sycophancy detected. Generated unbiased opinion considering both perspectives."
+                if sycophancy_detected
+                else "No sycophancy detected. Consider both perspectives and provide a balanced response."
             ),
         }
