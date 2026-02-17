@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from config import CONVERSATION_HISTORY_PATH, MAX_HISTORY_TURNS
+from .config import CONVERSATION_HISTORY_PATH, MAX_HISTORY_TURNS
 
 
 class ConversationHistoryManager:

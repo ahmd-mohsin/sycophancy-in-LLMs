@@ -1,12 +1,13 @@
 from typing import Optional
 
-from lc_compat import HuggingFacePipeline
-from config import HF_MODEL_NAME, HF_MAX_NEW_TOKENS, HF_TEMPERATURE
-from conversation_history import ConversationHistoryManager
-from bias_detector import BiasDetector
-from claim_extractor import ClaimExtractor
-from question_classifier import QuestionClassifier
-from context_extractor import ContextExtractor
+from .lc_compat import HuggingFacePipeline
+from .config import HF_MODEL_NAME, HF_MAX_NEW_TOKENS, HF_TEMPERATURE
+from .conversation_history import ConversationHistoryManager
+from .bias_detector import BiasDetector
+from .claim_extractor import ClaimExtractor
+from .question_classifier import QuestionClassifier
+from .context_extractor import ContextExtractor
+
 
 
 class Module1:

@@ -1,9 +1,9 @@
 import re
 from typing import Optional
 
-from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
-from config import SYCOPHANCY_REMOVAL_PATTERNS
-from bias_detector import BiasDetector
+from .lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from .config import SYCOPHANCY_REMOVAL_PATTERNS
+from .bias_detector import BiasDetector
 
 
 CLAIM_EXTRACTION_TEMPLATE = None

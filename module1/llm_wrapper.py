@@ -1,13 +1,13 @@
 from typing import Optional
 
-from config import (
+from .config import (
     HF_MODEL_NAME,
     HF_API_TOKEN,
     HF_DEVICE,
     HF_MAX_NEW_TOKENS,
     HF_TEMPERATURE,
 )
-from conversation_history import ConversationHistoryManager
+from .conversation_history import ConversationHistoryManager
 
 
 class HFModelWrapper:

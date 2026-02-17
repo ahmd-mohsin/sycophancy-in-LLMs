@@ -1,9 +1,9 @@
 import re
 from typing import Optional
 
-from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
-from conversation_history import ConversationHistoryManager
-from bias_detector import BiasDetector
+from .lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from .conversation_history import ConversationHistoryManager
+from .bias_detector import BiasDetector
 
 
 CONTEXT_SUMMARIZATION_TEMPLATE = None

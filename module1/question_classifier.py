@@ -1,8 +1,8 @@
 import re
 from typing import Optional
 
-from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
-from config import TEMPORAL_MARKERS, FACTUAL_INDICATOR_KEYWORDS
+from .lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from .config import TEMPORAL_MARKERS, FACTUAL_INDICATOR_KEYWORDS
 
 
 CLASSIFICATION_TEMPLATE = None

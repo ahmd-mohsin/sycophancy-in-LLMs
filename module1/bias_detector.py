@@ -1,8 +1,8 @@
 import re
 from typing import Optional
 
-from lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
-from config import BIAS_KEYWORDS
+from .lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
+from .config import BIAS_KEYWORDS
 
 
 IMPLICIT_OPINION_PATTERNS = [
