@@ -1,13 +1,13 @@
 import re
 from typing import Optional
 
-from lc_compat import LLMChain
-from prompts.factual_reasoning import (
+from module2.lc_compat import LLMChain
+from module2.prompts.factual_reasoning import (
     ANALYTICAL_CHAIN_PROMPT,
     ADVERSARIAL_CHAIN_PROMPT,
     KNOWLEDGE_CHAIN_PROMPT,
 )
-from config import NUM_REASONING_CHAINS
+from module2.config import NUM_REASONING_CHAINS
 
 
 CHAIN_CONFIGS = [

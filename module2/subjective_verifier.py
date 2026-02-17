@@ -1,6 +1,6 @@
-from opinion_shift_detector import OpinionShiftDetector
-from conversation_summarizer import ConversationSummarizer
-from config import SUBJECTIVE_MAX_CONFIDENCE
+from module2.opinion_shift_detector import OpinionShiftDetector
+from module2.conversation_summarizer import ConversationSummarizer
+from module2.config import SUBJECTIVE_MAX_CONFIDENCE
 
 
 class SubjectiveVerifier:

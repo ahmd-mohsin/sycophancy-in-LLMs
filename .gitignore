@@ -13,3 +13,5 @@
 *.pyzwzwzwzwzw
 *.pyzwzwzwzwzwzw
 *.safetensors
+*.bin
+*.gitattributes

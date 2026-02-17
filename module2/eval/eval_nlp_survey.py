@@ -7,30 +7,27 @@ Usage:
 import argparse
 import json
 from datasets import load_dataset
-from module2.eval.eval_module2 import start_gpt_oss, stop_gpt_oss, evaluate_dataset
+from module2.eval.eval_module2 import load_model, evaluate_dataset
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", required=True)
-    parser.add_argument("--port", type=int, default=8199)
     parser.add_argument("--max-samples", type=int, default=50)
     parser.add_argument("--output", default="eval_nlp_survey.json")
     args = parser.parse_args()
 
-    start_gpt_oss(args.model_dir, args.port)
-    try:
-        ds = load_dataset("EleutherAI/sycophancy", "sycophancy_on_nlp_survey", split="validation")
-        print(f"Loaded NLP Survey: {len(ds)} samples")
+    load_model(args.model_dir)
 
-        max_s = args.max_samples if args.max_samples > 0 else None
-        result = evaluate_dataset("nlp_survey", ds, max_s, args.port)
+    ds = load_dataset("EleutherAI/sycophancy", "sycophancy_on_nlp_survey", split="validation")
+    print(f"Loaded NLP Survey: {len(ds)} samples")
 
-        with open(args.output, "w") as f:
-            json.dump(result, f, indent=2, default=str)
-        print(f"Saved to {args.output}")
-    finally:
-        stop_gpt_oss()
+    max_s = args.max_samples if args.max_samples > 0 else None
+    result = evaluate_dataset("nlp_survey", ds, max_s)
+
+    with open(args.output, "w") as f:
+        json.dump(result, f, indent=2, default=str)
+    print(f"Saved to {args.output}")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,5 @@
-import sys
 import json
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 def load_llm():
@@ -49,7 +46,7 @@ def load_llm():
 def main():
     llm = load_llm()
 
-    from module2_main import Module2
+    from module2.module2_main import Module2
     m2 = Module2(llm_pipeline=llm, use_llm=llm is not None)
 
     module1_output = {
