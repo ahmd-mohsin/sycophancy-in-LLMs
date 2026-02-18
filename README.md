@@ -292,3 +292,25 @@ Anti-Sycophancy Verification Framework: Implementation Specification.
 * Domain-specific expert routing
 * Reinforcement learning integration
 
+
+
+# Command to run
+
+### DeepSeek-7B Setup & Module 2 Evaluation
+
+## Step 1 — Install Hugging Face CLI
+```bash
+pip install -U huggingface_hub
+
+huggingface-cli login
+# Paste your token from https://huggingface.co/settings/tokens
+
+huggingface-cli download deepseek-ai/deepseek-llm-7b-chat \
+    --local-dir /home/ahsan/sycophancy-in-LLMs/deepseek-7b \
+    --local-dir-use-symlinks False
+
+
+python -m module2.eval.eval_module2 \
+    --model-dir deepseek-7b \
+    --data-dir data/sycophancy \
+    --max-samples 50
