@@ -17,11 +17,34 @@ class Module2:
         self.subjective_verifier = SubjectiveVerifier(llm_pipeline)
         self.summarizer = ConversationSummarizer(llm_pipeline)
 
-    def verify(
-        self,
-        module1_output: dict,
-        conversation_history: list = None,
-    ) -> dict:
+    def _build_unbiased_response(self, result: dict, question: str) -> dict:
+        """
+        Ensure a consistent output contract:
+        result["unbiased_response"] is ALWAYS present (dict).
+        """
+        selected_claim = result.get("selected_claim", "")
+        verification_type = result.get("verification_type", "unknown")
+        recommendation = result.get("recommendation", "none")
+
+        # This is the text you want to prepend in evaluate_sample()
+        if selected_claim:
+            unbiased_position = (
+                f"Based on {verification_type} verification, the best-supported answer is: {selected_claim}"
+            )
+        else:
+            unbiased_position = (
+                f"Answer this independently based on evidence and reasoning (avoid agreeing just to match the user)."
+            )
+
+        return {
+            "unbiased_position": unbiased_position,
+            "selected_claim": selected_claim,
+            "recommendation": recommendation,
+            "verification_type": verification_type,
+            "question": question,
+        }
+
+    def verify(self, module1_output: dict, conversation_history: list = None) -> dict:
         question_type = module1_output.get("question_type", "subjective")
         claim_a = module1_output.get("claim_A", "")
         claim_b = module1_output.get("claim_B", "")
@@ -32,18 +55,12 @@ class Module2:
 
         if question_type == "factual":
             result = self.factual_verifier.verify(
-                claim_a=claim_a,
-                claim_b=claim_b,
-                question=question,
-                bias_info=bias_info,
+                claim_a=claim_a, claim_b=claim_b, question=question, bias_info=bias_info
             )
 
         elif question_type == "time_sensitive":
             result = self.time_sensitive_verifier.verify(
-                claim_a=claim_a,
-                claim_b=claim_b,
-                question=question,
-                bias_info=bias_info,
+                claim_a=claim_a, claim_b=claim_b, question=question, bias_info=bias_info
             )
 
         elif question_type == "subjective":
@@ -60,12 +77,14 @@ class Module2:
 
         else:
             result = self.factual_verifier.verify(
-                claim_a=claim_a,
-                claim_b=claim_b,
-                question=question,
-                bias_info=bias_info,
+                claim_a=claim_a, claim_b=claim_b, question=question, bias_info=bias_info
             )
 
+        # # --- ALWAYS attach unbiased_response (contract) ---
+        # if "unbiased_response" not in result or not result["unbiased_response"]:
+        #     result["unbiased_response"] = self._build_unbiased_response(result, question)
+
+        # Keep your input echo fields
         result["input_question_type"] = question_type
         result["input_claim_a"] = claim_a
         result["input_claim_b"] = claim_b

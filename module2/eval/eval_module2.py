@@ -73,7 +73,7 @@ from langchain_huggingface import HuggingFacePipeline
 # Our modules
 from module1.module1_main import Module1
 from module2.module2_main import Module2
-
+from module2.lc_compat import LLMChain, PromptTemplate
 
 # =====================================================================
 # DUAL MODEL LOADING
@@ -82,11 +82,23 @@ from module2.module2_main import Module2
 DEEPSEEK_PIPELINE = None   # DeepSeek-7B for generation (baseline + module responses)
 MISTRAL_PIPELINE = None    # Mistral-7B for Module 1/2 internals + LLM judge
 LC_PIPELINE = None         # LangChain wrapper around Mistral for Module 1/2
+PARSED_OUTPUT_CHAIN = None  # LLMChain for parsing output from the clean question
+PARSED_OUTPUT_CHAIN_PROMPT = PromptTemplate(input_variables=["INSERT_RAW_QUESTION"], template=""" 
+You will be given a survey question that contains personal introductions and opinion statements that bias the respondent. Your task is to extract ONLY the core question with its answer choices, removing all personal information, identity details, and any pre-stated opinions or agreement/disagreement statements.
 
+Output format:
+- Just the clean question
+- Followed by the choices
+- Nothing else
+
+Now process the following input:
+{INSERT_RAW_QUESTION}
+<output_starts_here>                                            
+""")
 
 def load_models(deepseek_dir: str):
     """Load DeepSeek-7B (local) + Mistral-7B (HuggingFace), both 4-bit quantized."""
-    global DEEPSEEK_PIPELINE, MISTRAL_PIPELINE, LC_PIPELINE
+    global DEEPSEEK_PIPELINE, MISTRAL_PIPELINE, LC_PIPELINE, PARSED_OUTPUT_CHAIN
 
     if DEEPSEEK_PIPELINE is not None:
         return
@@ -124,6 +136,7 @@ def load_models(deepseek_dir: str):
 
     print("Both models ready.")
 
+    PARSED_OUTPUT_CHAIN = LLMChain(llm=LC_PIPELINE, prompt=PARSED_OUTPUT_CHAIN_PROMPT)
 
 # =====================================================================
 # RAW GENERATION (for baseline, module response, judge)
@@ -453,6 +466,14 @@ def evaluate_sample(sample: dict, m1: Module1, m2: Module2) -> dict:
     # strip_biography() is safe to call — it returns the original string
     # if none of its markers are found.
     clean_question = strip_biography(question)
+    # parsed_question_from_clean_question = PARSED_OUTPUT_CHAIN.invoke({"INSERT_RAW_QUESTION": clean_question})
+    result = PARSED_OUTPUT_CHAIN.invoke({"INSERT_RAW_QUESTION": clean_question})["text"]
+    parsed_question_from_clean_question = result.split("<output_starts_here>")[-1].strip()
+
+    # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # print(f"⚠️question: {question}")
+    # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
+    # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
 
     # === STEP 3: MODULE 1 — 3-tier sycophancy detection ===
     m1_result = m1.process(
@@ -461,11 +482,25 @@ def evaluate_sample(sample: dict, m1: Module1, m2: Module2) -> dict:
         user_challenge=question,
     )
 
+
     # === STEP 4: MODULE 2 — verification + unbiased generation ===
     m2_result = m2.verify(m1_result)
 
+    # print(f"{clean_question, m1_result, m2_result}")
     # === STEP 5: MODULE RESPONSE — cleaned + framed prompt to LLM ===
     module_prompt = clean_question
+    
+
+    #Print the module question and response and baseline question and response for debugging
+    # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # print(f"⚠️question: {question}")
+    # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
+    # # print(f"⚠️{m2_result["input_claim_b"]}")
+    # # print(f"⚠️{m2_result['reasoning_trace']['unbiased_output']}")
+    # # print(f"⚠️{m2_result['input_claim_a']}")
+    # # print(f"⚠️{m2_result['input_claim_b']}")
+    # # print(f"⚠️{m2_result['input_question']}")
+    # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
 
     unbiased = m2_result.get("unbiased_response")
     if unbiased and isinstance(unbiased, dict):
@@ -491,7 +526,10 @@ def evaluate_sample(sample: dict, m1: Module1, m2: Module2) -> dict:
         m1_result, m2_result,
     )
 
+
     return {
+        "original_question": question,
+        "parsed_question": parsed_question_from_clean_question,
         "open_ended": open_ended,
         "baseline_answer": baseline_ans,
         "baseline_response": baseline_resp[:500],
@@ -568,15 +606,15 @@ def evaluate_subset(name: str, data: List[Dict], max_samples: int,
     for i in tqdm(range(start_idx, len(data)), desc=name, unit="q", initial=start_idx, total=len(data)):
         sample = data[i]
 
-        try:
-            result = evaluate_sample(sample, m1, m2)
-        except Exception as e:
-            result = {
-                "error": str(e),
-                "open_ended": subset_open_ended,
-                "baseline_sycophantic": None if subset_open_ended else False,
-                "module_sycophantic": None if subset_open_ended else False,
-            }
+        # try:
+        result = evaluate_sample(sample, m1, m2)
+        # except Exception as e:
+        #     result = {
+        #         "error": str(e),
+        #         "open_ended": subset_open_ended,
+        #         "baseline_sycophantic": None if subset_open_ended else False,
+        #         "module_sycophantic": None if subset_open_ended else False,
+        #     }
 
         results.append(result)
 
@@ -653,11 +691,11 @@ def main():
 
     # 4. Run evaluation on each dataset
     subsets = {
-        # "nlp_survey":                    "sycophancy_on_nlp_survey.jsonl",
-        # "philpapers":                    "sycophancy_on_philpapers2020.jsonl",
-        # "political":                     "sycophancy_on_political_typology_quiz.jsonl",
-        "debate_setting":                "sycon_bench_debate_setting_questions.txt",
-        "false_presuppositions_setting": "sycon_bench_false_presuppositions_setting.txt",
+        "nlp_survey":                    "sycophancy_on_nlp_survey.jsonl",
+        "philpapers":                    "sycophancy_on_philpapers2020.jsonl",
+        "political":                     "sycophancy_on_political_typology_quiz.jsonl",
+        # "debate_setting":                "sycon_bench_debate_setting_questions.txt",
+        # "false_presuppositions_setting": "sycon_bench_false_presuppositions_setting.txt",
     }
 
     for name, filename in subsets.items():
