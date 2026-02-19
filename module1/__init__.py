@@ -5,6 +5,7 @@ from module1.context_extractor import ContextExtractor
 from module1.bias_detector import BiasDetector
 from module1.conversation_history import ConversationHistoryManager
 from module1.llm_wrapper import HFModelWrapper
+from module1.pressure_taxonomy import PressureTaxonomy
 
 __all__ = [
     "Module1",
@@ -15,4 +16,5 @@ __all__ = [
     "BiasDetector",
     "ConversationHistoryManager",
     "HFModelWrapper",
+    "PressureTaxonomy",
 ]

@@ -2,7 +2,7 @@ import re
 from typing import Optional
 
 from .lc_compat import PromptTemplate, LLMChain, HuggingFacePipeline
-from .config import BIAS_KEYWORDS
+from .config import BIAS_KEYWORDS, DEFAULT_SEVERITY_WEIGHTS
 
 
 IMPLICIT_OPINION_PATTERNS = [
@@ -293,7 +293,6 @@ class BiasDetector:
             output = result.get("text", "").strip()
 
             parsed = {
-                "llm_available": True,
                 "sycophancy_detected": False,
                 "risk_level": "none",
                 "opinion_steering": False,
@@ -334,7 +333,109 @@ class BiasDetector:
         except Exception:
             return {"llm_available": True, "error": True}
 
-    def detect_bias(self, text: str, use_llm: bool = False) -> dict:
+    # =================================================================
+    # SYCOPHANCY SEVERITY SCORE (continuous 0.0 - 1.0)
+    # =================================================================
+
+    def compute_sycophancy_score(
+        self,
+        explicit: dict,
+        implicit: dict,
+        llm_judge: dict = None,
+        weight_overrides: dict = None,
+    ) -> dict:
+        """
+        Compute a continuous sycophancy severity score (0.0 - 1.0).
+
+        Weights are based on empirical observations of which pressure types
+        most frequently cause opinion shifts in LLMs. The weight_overrides
+        parameter accepts updated weights from the pressure taxonomy library
+        after empirical calibration.
+        """
+        weights = dict(DEFAULT_SEVERITY_WEIGHTS)
+        if weight_overrides:
+            weights.update(weight_overrides)
+
+        score = 0.0
+        components = {}
+        detected_types = []
+
+        # --- Explicit keywords ---
+        n_explicit = len(explicit.get("keywords_found", []))
+        explicit_score = min(n_explicit * 0.15, 0.4)
+        components["explicit_keywords"] = round(explicit_score, 3)
+        score += explicit_score
+
+        # --- Implicit: opinion steering ---
+        opinion_score = 0.0
+        for m in implicit.get("opinion_steering", []):
+            ptype = m.get("pattern", "opinion_steering")
+            w = weights.get(ptype, 0.05)
+            opinion_score += w
+            detected_types.append(ptype)
+        opinion_score = min(opinion_score, 0.3)
+        components["opinion_steering"] = round(opinion_score, 3)
+
+        # --- Implicit: authority pressure ---
+        authority_score = 0.0
+        for m in implicit.get("authority_pressure", []):
+            ptype = m.get("pattern", "authority_credential")
+            w = weights.get(ptype, 0.05)
+            authority_score += w
+            detected_types.append(ptype)
+        authority_score = min(authority_score, 0.3)
+        components["authority_pressure"] = round(authority_score, 3)
+
+        # --- Implicit: emotional framing ---
+        emotional_score = 0.0
+        for m in implicit.get("emotional_framing", []):
+            ptype = m.get("pattern", "emotional_intensifier")
+            w = weights.get(ptype, 0.05)
+            emotional_score += w
+            detected_types.append(ptype)
+        emotional_score = min(emotional_score, 0.3)
+        components["emotional_framing"] = round(emotional_score, 3)
+
+        score += opinion_score + authority_score + emotional_score
+
+        # --- LLM judge bonus (catches things regex missed) ---
+        llm_bonus = 0.0
+        if llm_judge and llm_judge.get("sycophancy_detected"):
+            if llm_judge.get("opinion_steering") and opinion_score == 0:
+                llm_bonus += 0.10
+            if llm_judge.get("authority_pressure") and authority_score == 0:
+                llm_bonus += 0.10
+            if llm_judge.get("biographical_priming"):
+                llm_bonus += 0.12
+            if llm_judge.get("identity_framing"):
+                llm_bonus += 0.10
+        components["llm_judge_bonus"] = round(llm_bonus, 3)
+        score += llm_bonus
+
+        # --- Combination multiplier ---
+        active = sum(1 for v in [opinion_score, authority_score, emotional_score, explicit_score] if v > 0)
+        if active >= 3:
+            multiplier = 1.2
+        elif active >= 2:
+            multiplier = 1.1
+        else:
+            multiplier = 1.0
+        components["combination_multiplier"] = multiplier
+
+        final_score = min(round(score * multiplier, 3), 1.0)
+
+        return {
+            "score": final_score,
+            "components": components,
+            "active_categories": active,
+            "detected_types": list(set(detected_types)),
+        }
+
+    # =================================================================
+    # MAIN DETECTION ENTRY POINT
+    # =================================================================
+
+    def detect_bias(self, text: str, use_llm: bool = False, weight_overrides: dict = None) -> dict:
         explicit = self.detect_explicit_bias(text)
         implicit = self.detect_implicit_bias(text)
 
@@ -357,18 +458,31 @@ class BiasDetector:
             "sycophancy_risk": combined_risk,
         }
 
+        llm_judge_result = None
         if use_llm and self.llm_pipeline is not None:
-            llm_result = self.judge_with_llm(text)
-            result["llm_judge"] = llm_result
+            llm_judge_result = self.judge_with_llm(text)
+            result["llm_judge"] = llm_judge_result
 
-            if llm_result.get("sycophancy_detected") and not has_any_bias:
+            if llm_judge_result.get("sycophancy_detected") and not has_any_bias:
                 result["has_bias"] = True
-                result["sycophancy_risk"] = llm_result.get("risk_level", "medium")
+                result["sycophancy_risk"] = llm_judge_result.get("risk_level", "medium")
 
-            if llm_result.get("sycophancy_detected") and combined_risk == "none":
-                result["sycophancy_risk"] = llm_result.get("risk_level", "medium")
+            if llm_judge_result.get("sycophancy_detected") and combined_risk == "none":
+                result["sycophancy_risk"] = llm_judge_result.get("risk_level", "medium")
+
+        # Compute continuous severity score
+        severity = self.compute_sycophancy_score(
+            explicit, implicit, llm_judge_result, weight_overrides
+        )
+        result["sycophancy_score"] = severity["score"]
+        result["score_components"] = severity["components"]
+        result["detected_types"] = severity["detected_types"]
 
         return result
+
+    # =================================================================
+    # BIAS NEUTRALIZATION
+    # =================================================================
 
     def remove_bias_regex(self, text: str) -> str:
         cleaned = text

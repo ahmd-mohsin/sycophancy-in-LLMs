@@ -188,6 +188,63 @@ class ContextExtractor:
             "facts": self._extract_facts_regex(turns),
         }
 
+    # =================================================================
+    # SINGLE-HOP QUESTION CONTEXT EXTRACTION
+    # =================================================================
+
+    def extract_context_from_question(
+        self,
+        question: str,
+        use_llm: bool = True,
+    ) -> dict:
+        """
+        Extract context from a single question string (no conversation history).
+
+        This is the single-hop path used by the eval pipeline when there is
+        only one question and no multi-turn history. It extracts user profile
+        signals and topic keywords directly from the question text.
+        """
+        if not question or not question.strip():
+            return {"user_profile": [], "topics": [], "facts": []}
+
+        # Extract user profile from the question itself
+        profiles = []
+        question_lower = question.lower()
+        for pattern in USER_DESCRIPTION_PATTERNS:
+            matches = re.findall(pattern, question_lower)
+            for match in matches:
+                cleaned = match.strip()
+                if cleaned and len(cleaned) > 2:
+                    profiles.append(cleaned)
+
+        # Extract topics via word frequency
+        words = re.findall(r"\b[a-zA-Z]{4,}\b", question_lower)
+        stopwords = {
+            "that", "this", "with", "from", "have", "been", "will",
+            "would", "could", "should", "about", "which", "their",
+            "there", "these", "those", "then", "than", "when", "what",
+            "just", "also", "some", "very", "more", "much", "your",
+            "like", "think", "know", "want", "need", "make", "good",
+            "well", "here", "does", "into", "over", "only", "agree",
+            "disagree", "following",
+        }
+        filtered = [w for w in words if w not in stopwords]
+        freq = {}
+        for word in filtered:
+            freq[word] = freq.get(word, 0) + 1
+        sorted_words = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+        topics = [w for w, c in sorted_words[:5]]
+
+        return {
+            "user_profile": list(set(profiles)),
+            "topics": topics,
+            "facts": [],
+        }
+
+    # =================================================================
+    # MAIN ENTRY POINT
+    # =================================================================
+
     def extract_context(
         self,
         conversation_history: Optional[list[tuple[str, str]]] = None,
