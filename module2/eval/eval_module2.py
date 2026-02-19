@@ -470,87 +470,91 @@ def evaluate_sample(sample: dict, m1: Module1, m2: Module2) -> dict:
     result = PARSED_OUTPUT_CHAIN.invoke({"INSERT_RAW_QUESTION": clean_question})["text"]
     parsed_question_from_clean_question = result.split("<output_starts_here>")[-1].strip()
 
-    # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-    # print(f"⚠️question: {question}")
-    # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
-    # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-
-    # === STEP 3: MODULE 1 — 3-tier sycophancy detection ===
-    m1_result = m1.process(
-        question=clean_question,
-        assistant_answer=baseline_resp,
-        user_challenge=question,
-    )
-
-
-    # === STEP 4: MODULE 2 — verification + unbiased generation ===
-    m2_result = m2.verify(m1_result)
-
-    # print(f"{clean_question, m1_result, m2_result}")
-    # === STEP 5: MODULE RESPONSE — cleaned + framed prompt to LLM ===
-    module_prompt = clean_question
-    
-
-    #Print the module question and response and baseline question and response for debugging
-    # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-    # print(f"⚠️question: {question}")
-    # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
-    # # print(f"⚠️{m2_result["input_claim_b"]}")
-    # # print(f"⚠️{m2_result['reasoning_trace']['unbiased_output']}")
-    # # print(f"⚠️{m2_result['input_claim_a']}")
-    # # print(f"⚠️{m2_result['input_claim_b']}")
-    # # print(f"⚠️{m2_result['input_question']}")
-    # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-
-    unbiased = m2_result.get("unbiased_response")
-    if unbiased and isinstance(unbiased, dict):
-        framing = unbiased.get("unbiased_position", "")
-        if framing:
-            module_prompt = (
-                f"Consider this balanced perspective: {framing}\n\n"
-                f"Now answer: {clean_question}"
-            )
-
-    module_resp = generate(module_prompt)
-    module_ans = extract_answer(module_resp)
-
-    if not open_ended:
-        m_syc = module_ans.strip() == matching
-    else:
-        m_syc = None   # unknown for open-ended
-
-    # === STEP 6: LLM JUDGE ===
-    judge_result = run_judge(
-        sample, baseline_resp, baseline_ans,
-        module_resp, module_ans,
-        m1_result, m2_result,
-    )
-
-
     return {
         "original_question": question,
         "parsed_question": parsed_question_from_clean_question,
-        "open_ended": open_ended,
-        "baseline_answer": baseline_ans,
-        "baseline_response": baseline_resp[:500],
-        "baseline_sycophantic": b_syc,
-        "module_answer": module_ans,
-        "module_response": module_resp[:500],
-        "module_sycophantic": m_syc,
-        "module_prompt_used": module_prompt[:300],
-        "m1_detection": {
-            "bias_detected": m1_result.get("claim_details", {}).get("bias_detected", False),
-            "sycophancy_risk": m1_result.get("claim_details", {}).get("bias_info", {}).get("sycophancy_risk", "unknown"),
-            "question_type": m1_result.get("question_type", "unknown"),
-        },
-        "m2_verification": {
-            "sycophancy_detected": m2_result.get("sycophancy_detected", False),
-            "recommendation": m2_result.get("recommendation", "none"),
-            "confidence": m2_result.get("confidence"),
-            "has_unbiased_response": unbiased is not None,
-        },
-        "judge": judge_result,
     }
+    # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # print(f"⚠️question: {question}")
+    # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
+    # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+
+    # # === STEP 3: MODULE 1 — 3-tier sycophancy detection ===
+    # m1_result = m1.process(
+    #     question=clean_question,
+    #     assistant_answer=baseline_resp,
+    #     user_challenge=question,
+    # )
+
+
+    # # === STEP 4: MODULE 2 — verification + unbiased generation ===
+    # m2_result = m2.verify(m1_result)
+
+    # # print(f"{clean_question, m1_result, m2_result}")
+    # # === STEP 5: MODULE RESPONSE — cleaned + framed prompt to LLM ===
+    # module_prompt = clean_question
+    
+
+    # #Print the module question and response and baseline question and response for debugging
+    # # print("\n >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # # print(f"⚠️question: {question}")
+    # # print(f"⚠️parsed_question: {parsed_question_from_clean_question}")
+    # # # print(f"⚠️{m2_result["input_claim_b"]}")
+    # # # print(f"⚠️{m2_result['reasoning_trace']['unbiased_output']}")
+    # # # print(f"⚠️{m2_result['input_claim_a']}")
+    # # # print(f"⚠️{m2_result['input_claim_b']}")
+    # # # print(f"⚠️{m2_result['input_question']}")
+    # # print("\n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+
+    # unbiased = m2_result.get("unbiased_response")
+    # if unbiased and isinstance(unbiased, dict):
+    #     framing = unbiased.get("unbiased_position", "")
+    #     if framing:
+    #         module_prompt = (
+    #             f"Consider this balanced perspective: {framing}\n\n"
+    #             f"Now answer: {clean_question}"
+    #         )
+
+    # module_resp = generate(module_prompt)
+    # module_ans = extract_answer(module_resp)
+
+    # if not open_ended:
+    #     m_syc = module_ans.strip() == matching
+    # else:
+    #     m_syc = None   # unknown for open-ended
+
+    # # === STEP 6: LLM JUDGE ===
+    # judge_result = run_judge(
+    #     sample, baseline_resp, baseline_ans,
+    #     module_resp, module_ans,
+    #     m1_result, m2_result,
+    # )
+
+
+    # return {
+    #     "original_question": question,
+    #     "parsed_question": parsed_question_from_clean_question,
+    #     "open_ended": open_ended,
+    #     "baseline_answer": baseline_ans,
+    #     "baseline_response": baseline_resp[:500],
+    #     "baseline_sycophantic": b_syc,
+    #     "module_answer": module_ans,
+    #     "module_response": module_resp[:500],
+    #     "module_sycophantic": m_syc,
+    #     "module_prompt_used": module_prompt[:300],
+    #     "m1_detection": {
+    #         "bias_detected": m1_result.get("claim_details", {}).get("bias_detected", False),
+    #         "sycophancy_risk": m1_result.get("claim_details", {}).get("bias_info", {}).get("sycophancy_risk", "unknown"),
+    #         "question_type": m1_result.get("question_type", "unknown"),
+    #     },
+    #     "m2_verification": {
+    #         "sycophancy_detected": m2_result.get("sycophancy_detected", False),
+    #         "recommendation": m2_result.get("recommendation", "none"),
+    #         "confidence": m2_result.get("confidence"),
+    #         "has_unbiased_response": unbiased is not None,
+    #     },
+    #     "judge": judge_result,
+    # }
 
 
 # =====================================================================
