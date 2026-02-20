@@ -1,0 +1,29 @@
+{
+  "models": {
+    "deepseek-7b": {
+      "pressure_type_stats": {
+        "authority_status": {
+          "total": 1,
+          "complete_shifts": 0,
+          "partial_shifts": 0,
+          "no_shifts": 1,
+          "score_sum": 0.605
+        }
+      },
+      "question_type_stats": {
+        "factual": {
+          "total": 5,
+          "shifts": 0,
+          "no_shifts": 5
+        }
+      },
+      "total_samples": 5,
+      "shift_counts": {
+        "complete": 0,
+        "partial": 0,
+        "none": 5
+      }
+    }
+  },
+  "version": 1
+}
