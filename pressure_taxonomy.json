@@ -10,18 +10,18 @@
           "score_sum": 13.669999999999998
         },
         "opinion_steering": {
-          "total": 76,
-          "complete_shifts": 0,
+          "total": 77,
+          "complete_shifts": 1,
           "partial_shifts": 36,
           "no_shifts": 40,
-          "score_sum": 46.57399999999999
+          "score_sum": 47.12399999999999
         },
         "authority_credential": {
-          "total": 30,
-          "complete_shifts": 0,
+          "total": 34,
+          "complete_shifts": 1,
           "partial_shifts": 0,
-          "no_shifts": 30,
-          "score_sum": 21.803999999999995
+          "no_shifts": 33,
+          "score_sum": 23.36399999999999
         },
         "guilt_tripping": {
           "total": 8,
@@ -31,25 +31,25 @@
           "score_sum": 6.634
         },
         "authority_framing": {
-          "total": 5,
-          "complete_shifts": 0,
+          "total": 6,
+          "complete_shifts": 1,
           "partial_shifts": 0,
           "no_shifts": 5,
-          "score_sum": 2.58
+          "score_sum": 2.98
         },
         "authority_status": {
-          "total": 3,
-          "complete_shifts": 0,
+          "total": 5,
+          "complete_shifts": 1,
           "partial_shifts": 0,
-          "no_shifts": 3,
-          "score_sum": 2.05
+          "no_shifts": 4,
+          "score_sum": 2.8499999999999996
         },
         "authority_experience": {
-          "total": 1,
+          "total": 4,
           "complete_shifts": 0,
-          "partial_shifts": 0,
-          "no_shifts": 1,
-          "score_sum": 0.804
+          "partial_shifts": 1,
+          "no_shifts": 3,
+          "score_sum": 2.064
         },
         "values_signaling": {
           "total": 21,
@@ -59,25 +59,135 @@
           "score_sum": 12.336000000000004
         },
         "political_identity": {
-          "total": 13,
+          "total": 14,
           "complete_shifts": 0,
           "partial_shifts": 12,
+          "no_shifts": 2,
+          "score_sum": 8.172
+        },
+        "leading_question": {
+          "total": 3,
+          "complete_shifts": 1,
+          "partial_shifts": 1,
           "no_shifts": 1,
-          "score_sum": 7.6320000000000014
+          "score_sum": 1.7149999999999999
+        },
+        "settled_science_framing": {
+          "total": 1,
+          "complete_shifts": 0,
+          "partial_shifts": 1,
+          "no_shifts": 0,
+          "score_sum": 0.715
+        },
+        "skepticism_expression": {
+          "total": 1,
+          "complete_shifts": 0,
+          "partial_shifts": 0,
+          "no_shifts": 1,
+          "score_sum": 0.38
+        },
+        "emotional_intensifier": {
+          "total": 2,
+          "complete_shifts": 1,
+          "partial_shifts": 0,
+          "no_shifts": 1,
+          "score_sum": 1.05
+        },
+        "personal_experience_appeal": {
+          "total": 1,
+          "complete_shifts": 0,
+          "partial_shifts": 0,
+          "no_shifts": 1,
+          "score_sum": 0.28
         }
       },
       "question_type_stats": {
         "subjective": {
-          "total": 150,
+          "total": 167,
           "shifts": 46,
-          "no_shifts": 104
+          "no_shifts": 121
+        },
+        "factual": {
+          "total": 122,
+          "shifts": 49,
+          "no_shifts": 73
+        },
+        "subjective_evaluation": {
+          "total": 6,
+          "shifts": 4,
+          "no_shifts": 2
+        },
+        "quality_assessment": {
+          "total": 3,
+          "shifts": 1,
+          "no_shifts": 2
+        },
+        "risk_assessment": {
+          "total": 3,
+          "shifts": 0,
+          "no_shifts": 3
+        },
+        "reasoning_evaluation": {
+          "total": 3,
+          "shifts": 0,
+          "no_shifts": 3
+        },
+        "strategy_evaluation": {
+          "total": 1,
+          "shifts": 1,
+          "no_shifts": 0
+        },
+        "self_assessment": {
+          "total": 1,
+          "shifts": 0,
+          "no_shifts": 1
+        },
+        "health_assessment": {
+          "total": 1,
+          "shifts": 0,
+          "no_shifts": 1
+        },
+        "political": {
+          "total": 4,
+          "shifts": 3,
+          "no_shifts": 1
+        },
+        "philosophical": {
+          "total": 2,
+          "shifts": 0,
+          "no_shifts": 2
+        },
+        "historical": {
+          "total": 2,
+          "shifts": 2,
+          "no_shifts": 0
+        },
+        "opinion": {
+          "total": 4,
+          "shifts": 2,
+          "no_shifts": 2
+        },
+        "unverifiable": {
+          "total": 6,
+          "shifts": 0,
+          "no_shifts": 6
+        },
+        "time_sensitive": {
+          "total": 2,
+          "shifts": 1,
+          "no_shifts": 1
+        },
+        "normative": {
+          "total": 13,
+          "shifts": 1,
+          "no_shifts": 12
         }
       },
-      "total_samples": 150,
+      "total_samples": 340,
       "shift_counts": {
-        "complete": 1,
-        "partial": 45,
-        "none": 104
+        "complete": 59,
+        "partial": 51,
+        "none": 230
       }
     }
   },
