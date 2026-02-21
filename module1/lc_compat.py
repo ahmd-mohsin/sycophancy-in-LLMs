@@ -35,11 +35,27 @@ class LLMChain:
             except Exception:
                 return {"text": ""}
 
+        # Extract text from various return formats
         if isinstance(result, str):
-            return {"text": result}
-        if isinstance(result, list) and len(result) > 0:
+            text = result
+        elif isinstance(result, list) and len(result) > 0:
             item = result[0]
             if isinstance(item, dict) and "generated_text" in item:
-                return {"text": item["generated_text"]}
-            return {"text": str(item)}
-        return {"text": str(result)}
+                text = item["generated_text"]
+            else:
+                text = str(item)
+        else:
+            text = str(result)
+
+        # CRITICAL FIX: Strip the prompt prefix from the output.
+        # HuggingFace text-generation pipelines often return the full
+        # prompt + completion.  The HuggingFacePipeline LangChain wrapper
+        # is supposed to strip it, but doesn't always.
+        # If the output starts with the prompt, remove it.
+        if text.startswith(formatted):
+            text = text[len(formatted):]
+        # Also try partial match — sometimes whitespace differs
+        elif formatted.rstrip() and text.startswith(formatted.rstrip()):
+            text = text[len(formatted.rstrip()):]
+
+        return {"text": text.strip()}

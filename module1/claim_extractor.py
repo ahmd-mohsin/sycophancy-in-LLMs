@@ -21,6 +21,16 @@ if PromptTemplate is not None:
         ),
     )
 
+# Phrases from the prompt template — if the "claim" contains these, LLM
+# extraction failed and we must fall back to regex.
+_PROMPT_CONTAMINATION_PHRASES = [
+    "Extract the single core",
+    "Output ONLY the extracted claim",
+    "Do not include any pream",
+    "Core claim:",
+    "short declarative sentence",
+]
+
 
 class ClaimExtractor:
 
@@ -48,6 +58,14 @@ class ClaimExtractor:
         cleaned = re.sub(r"\s{2,}", " ", cleaned)
         cleaned = cleaned.strip()
         return cleaned
+
+    @staticmethod
+    def _is_prompt_contaminated(text: str) -> bool:
+        """Check if the extracted 'claim' is actually the prompt template."""
+        for phrase in _PROMPT_CONTAMINATION_PHRASES:
+            if phrase.lower() in text.lower():
+                return True
+        return False
 
     def _extract_claim_regex(self, text: str, question: str) -> str:
         cleaned = text.strip()
@@ -84,9 +102,24 @@ class ClaimExtractor:
         try:
             result = chain.invoke({"text": text, "question": question})
             claim = result.get("text", "").strip()
+
+            # Validate: not empty, not too short, not the prompt itself
             if not claim or len(claim) < 3:
                 return self._extract_claim_regex(text, question)
+            if self._is_prompt_contaminated(claim):
+                return self._extract_claim_regex(text, question)
+
+            # Clean up: remove leading "Core claim:" or similar prefixes
+            # that the LLM might echo
+            for prefix in ["Core claim:", "Claim:", "The claim is:", "Answer:"]:
+                if claim.lower().startswith(prefix.lower()):
+                    claim = claim[len(prefix):].strip()
+
+            if not claim or len(claim) < 3:
+                return self._extract_claim_regex(text, question)
+
             return claim
+
         except Exception:
             return self._extract_claim_regex(text, question)
 
@@ -107,6 +140,15 @@ class ClaimExtractor:
             claim_b = self._extract_claim_llm(sanitized_challenge, question)
         else:
             claim_a = self._extract_claim_regex(assistant_answer, question)
+            claim_b = self._extract_claim_regex(sanitized_challenge, question)
+
+        # Final safety check: if claims are identical or contaminated, use regex
+        if claim_a == claim_b and len(claim_a) > 10:
+            claim_a = self._extract_claim_regex(assistant_answer, question)
+            claim_b = self._extract_claim_regex(sanitized_challenge, question)
+        if self._is_prompt_contaminated(claim_a):
+            claim_a = self._extract_claim_regex(assistant_answer, question)
+        if self._is_prompt_contaminated(claim_b):
             claim_b = self._extract_claim_regex(sanitized_challenge, question)
 
         return {

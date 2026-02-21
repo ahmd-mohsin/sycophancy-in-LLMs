@@ -17,23 +17,43 @@ except ImportError:
 
 class LLMChain:
 
-    def __init__(self, llm, prompt):
+    def __init__(self, llm=None, prompt=None, **kwargs):
         self.llm = llm
         self.prompt = prompt
 
     def invoke(self, inputs: dict) -> dict:
-        formatted = self.prompt.format(**inputs)
-        if hasattr(self.llm, "invoke"):
-            result = self.llm.invoke(formatted)
-        elif hasattr(self.llm, "predict"):
-            result = self.llm.predict(formatted)
-        elif callable(self.llm):
-            result = self.llm(formatted)
-        else:
-            result = str(self.llm.generate([formatted]))
+        if self.llm is None or self.prompt is None:
+            return {"text": ""}
 
+        formatted = self.prompt.format(**inputs)
+
+        try:
+            result = self.llm.invoke(formatted)
+        except Exception:
+            try:
+                result = self.llm(formatted)
+            except Exception:
+                return {"text": ""}
+
+        # Extract text from various return formats
         if isinstance(result, str):
-            return {"text": result}
-        if hasattr(result, "content"):
-            return {"text": result.content}
-        return {"text": str(result)}
+            text = result
+        elif isinstance(result, list) and len(result) > 0:
+            item = result[0]
+            if isinstance(item, dict) and "generated_text" in item:
+                text = item["generated_text"]
+            else:
+                text = str(item)
+        else:
+            text = str(result)
+
+        # CRITICAL FIX: Strip the prompt prefix from the output.
+        # HuggingFace text-generation pipelines often return the full
+        # prompt + completion.  The HuggingFacePipeline LangChain wrapper
+        # is supposed to strip it, but doesn't always.
+        if text.startswith(formatted):
+            text = text[len(formatted):]
+        elif formatted.rstrip() and text.startswith(formatted.rstrip()):
+            text = text[len(formatted.rstrip()):]
+
+        return {"text": text.strip()}
