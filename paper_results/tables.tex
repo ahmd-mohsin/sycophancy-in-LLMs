@@ -1,0 +1,90 @@
+% Auto-generated LaTeX tables for anti-sycophancy paper
+% Generated from: my_eval_results.json
+
+% ============================================
+% Table 1: Main Results
+% ============================================
+\begin{table}[t]
+\centering
+\caption{Sycophancy reduction results across datasets. \textit{Baseline} shows the sycophancy rate of DeepSeek-7B under biased prompts. \textit{Module} shows the rate after our pipeline (Module 1 detection + Module 2 verification + debiased prompting). \textit{Fix Rate} is the percentage of sycophantic baseline responses corrected by the module.}
+\label{tab:main_results}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset & $N$ & Baseline Syc.\% & Module Syc.\% & Fixed & Still Syc. & Fix Rate\% \\
+\midrule
+NLP Survey & 100 & 98.0 & 1.0 & 97/98 & 1/98 & 99.0 \\
+PhilPapers & 100 & 40.0 & 65.0 & 6/40 & 34/40 & 15.0 \\
+Political Typology & 100 & 93.0 & 43.0 & 55/93 & 38/93 & 59.1 \\
+\midrule
+\textbf{Aggregate} & 300 & 77.0 & 36.3 & 158/231 & 73/231 & 68.4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================
+% Table 2: Outcome Breakdown
+% ============================================
+\begin{table}[t]
+\centering
+\caption{Outcome breakdown showing all four possible transitions. \textit{Introduced} indicates cases where the module's debiased prompt caused the model to switch to the sycophantic answer (false positive harm).}
+\label{tab:outcome_breakdown}
+\begin{tabular}{lccccc}
+\toprule
+Dataset & Fixed & Still Syc. & Introduced & Both Indep. & Judge Score \\
+ & (syc$\to$indep) & (syc$\to$syc) & (indep$\to$syc) & (indep$\to$indep) & (1--5) \\
+\midrule
+NLP Survey & 97 & 1 & 0 & 2 & 3.98 \\
+PhilPapers & 6 & 34 & 31 & 29 & 2.75 \\
+Political Typology & 55 & 38 & 5 & 2 & 3.18 \\
+\midrule
+\textbf{Aggregate} & 158 & 73 & 36 & 33 & 3.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================
+% Table 3: Module 1 Detection Performance
+% ============================================
+\begin{table}[t]
+\centering
+\caption{Module 1 sycophancy detection results. Detection rate shows the percentage of samples where the 3-tier pipeline (keywords + regex + LLM judge) identified sycophantic pressure. Risk distribution shows the severity classification.}
+\label{tab:m1_detection}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset & Detected\% & Avg Score & \multicolumn{4}{c}{Risk Distribution} \\
+ & & & High & Medium & Low & None \\
+\midrule
+NLP Survey & 100.0 & 0.488 & 100 & 0 & 0 & 0 \\
+PhilPapers & 86.0 & 0.179 & 23 & 44 & 19 & 14 \\
+Political Typology & 99.0 & 0.258 & 16 & 80 & 3 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================
+% Table 4: Pressure Types
+% ============================================
+\begin{table}[t]
+\centering
+\caption{Top sycophancy pressure types detected by Module 1's Tier-2 regex patterns across all datasets. These empirically-derived categories form the pressure taxonomy.}
+\label{tab:pressure_types}
+\begin{tabular}{lc}
+\toprule
+Pressure Type & Count \\
+\midrule
+Opinion Steering & 146 \\
+Authority Credential & 58 \\
+Values Signaling & 46 \\
+Authority Institution & 38 \\
+Political Identity & 23 \\
+Guilt Tripping & 17 \\
+Authority Framing & 11 \\
+Authority Status & 7 \\
+Emotional Intensifier & 2 \\
+Authority Experience & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
