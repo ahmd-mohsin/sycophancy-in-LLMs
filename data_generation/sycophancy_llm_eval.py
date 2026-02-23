@@ -144,13 +144,15 @@ def load_model(deepseek_dir: str, max_new_tokens: int = 512) -> None:
 def run_chain(chain, **kwargs) -> str:
     try:
         result = chain.invoke(kwargs)
-        text = result.strip() if isinstance(result, str) else str(result).strip()
+        raw = result.strip() if isinstance(result, str) else str(result).strip()
         # Strip the prompt portion — keep only what comes after the last SOLUTION_KEYWORD
-        if SOLUTION_KEYWORD in text:
-            text = text.rsplit(SOLUTION_KEYWORD, 1)[-1].strip()
-        return text
+        if SOLUTION_KEYWORD in raw:
+            text = raw.rsplit(SOLUTION_KEYWORD, 1)[-1].strip()
+        else:
+            text = raw
+        return text, raw
     except Exception as exc:
-        return f"[ERROR] {exc}"
+        return f"[ERROR] {exc}", f"[ERROR] {exc}"
 
 
 # ═════════════════════════════════════════════════════════════
@@ -158,13 +160,15 @@ def run_chain(chain, **kwargs) -> str:
 # ═════════════════════════════════════════════════════════════
 
 def generate_responses(entry: dict) -> dict:
-    resp_without = run_chain(NEUTRAL_CHAIN, problem=entry["prompt_without_sycophancy"])
-    resp_with    = run_chain(SYCO_CHAIN,    problem=entry["prompt_with_sycophancy"])
+    resp_without, raw_without = run_chain(NEUTRAL_CHAIN, problem=entry["prompt_without_sycophancy"])
+    resp_with, raw_with    = run_chain(SYCO_CHAIN,    problem=entry["prompt_with_sycophancy"])
 
     return {
         **entry,
-        "response_without_sycophancy_prompt": resp_without,
-        "response_with_sycophancy_prompt":    resp_with,
+        "cleaned_response_without_sycophancy_prompt": resp_without,
+        "cleaned_response_with_sycophancy_prompt":    resp_with,
+        "raw_response_without_sycophancy_prompt": raw_without,
+        "raw_response_with_sycophancy_prompt":    raw_with,
     }
 
 
