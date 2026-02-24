@@ -1,0 +1,6 @@
+2026-02-24 02:00:44,078 [INFO] main — Checking backend connectivity...
+2026-02-24 02:00:44,082 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,084 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,085 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,087 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,087 [INFO] main — Dry run complete. Exiting.

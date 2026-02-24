@@ -1,0 +1,74 @@
+2026-02-24 02:00:44,078 [INFO] main — Checking backend connectivity...
+2026-02-24 02:00:44,082 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,084 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,085 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,087 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:00:44,087 [INFO] main — Dry run complete. Exiting.
+2026-02-24 02:10:38,443 [INFO] main — Checking backend connectivity...
+2026-02-24 02:10:38,443 [INFO] main — Checking backend connectivity...
+2026-02-24 02:10:38,446 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,446 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,448 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,448 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,450 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,450 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,452 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,452 [INFO] main —   ✓ Ollama reachable (http://localhost:11434)
+2026-02-24 02:10:38,452 [INFO] main — 
+==================================================
+2026-02-24 02:10:38,452 [INFO] main — 
+==================================================
+2026-02-24 02:10:38,452 [INFO] main —   Starting: MATH (3 topics → 18 samples)
+2026-02-24 02:10:38,452 [INFO] main —   Starting: MATH (3 topics → 18 samples)
+2026-02-24 02:10:38,452 [INFO] main — ==================================================
+2026-02-24 02:10:38,452 [INFO] main — ==================================================
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Resuming from 0 existing samples.
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Resuming from 0 existing samples.
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Need 3 seeds. 0 already done. Generating 3 more.
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Need 3 seeds. 0 already done. Generating 3 more.
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Seed 1/3 ...
+2026-02-24 02:10:38,452 [INFO] generators.base_generator — [math] Seed 1/3 ...
+2026-02-24 02:10:38,453 [ERROR] main —   FAILED: math — Model 'llama3.2:3b' not found in Ollama. Pull it with: `ollama pull llama3.2:3b`
+Traceback (most recent call last):
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 102, in _generate_ollama
+    resp.raise_for_status()
+  File "/home/ahmed/miniforge3/envs/sycophancy/lib/python3.10/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: http://localhost:11434/api/chat
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/main.py", line 175, in main
+    samples = generator.generate(n_topics=n_topics)
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/generators/base_generator.py", line 209, in generate
+    seed = self._generate_seed()
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/generators/base_generator.py", line 121, in _generate_seed
+    raw = self.orchestrator.generate(
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 142, in generate
+    return self._generate_ollama(prompt, system_prompt)
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 112, in _generate_ollama
+    raise ValueError(
+ValueError: Model 'llama3.2:3b' not found in Ollama. Pull it with: `ollama pull llama3.2:3b`
+2026-02-24 02:10:38,453 [ERROR] main —   FAILED: math — Model 'llama3.2:3b' not found in Ollama. Pull it with: `ollama pull llama3.2:3b`
+Traceback (most recent call last):
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 102, in _generate_ollama
+    resp.raise_for_status()
+  File "/home/ahmed/miniforge3/envs/sycophancy/lib/python3.10/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 404 Client Error: Not Found for url: http://localhost:11434/api/chat
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/main.py", line 175, in main
+    samples = generator.generate(n_topics=n_topics)
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/generators/base_generator.py", line 209, in generate
+    seed = self._generate_seed()
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/generators/base_generator.py", line 121, in _generate_seed
+    raw = self.orchestrator.generate(
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 142, in generate
+    return self._generate_ollama(prompt, system_prompt)
+  File "/home/ahmed/sycophancy-in-LLMs/dataset_generation/utils/model_client.py", line 112, in _generate_ollama
+    raise ValueError(
+ValueError: Model 'llama3.2:3b' not found in Ollama. Pull it with: `ollama pull llama3.2:3b`

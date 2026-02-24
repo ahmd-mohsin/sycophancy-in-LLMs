@@ -3,41 +3,36 @@ Configuration for sycophancy dataset generation.
 Each category uses a different model.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
-
 # ─── Model Assignments ───────────────────────────────────────────────────────
-# Swap any of these to a HuggingFace model ID by setting backend="huggingface"
-
 MODEL_CONFIG = {
     "math": {
-        "backend": "ollama",          # "ollama" | "huggingface"
-        "model_id": "deepseek-r1:7b", # ollama model name OR HF repo id
+        "backend": "ollama",
+        "model_id": "deepseek-r1:14b",
         "temperature": 0.3,
         "max_tokens": 512,
     },
     "physics": {
         "backend": "ollama",
-        "model_id": "mistral:7b",
+        "model_id": "qwen2.5:14b",
         "temperature": 0.3,
         "max_tokens": 512,
     },
     "political": {
         "backend": "ollama",
-        "model_id": "llama3.2:3b",
+        "model_id": "llama3.1:8b",
         "temperature": 0.7,
         "max_tokens": 512,
     },
     "opinion": {
         "backend": "ollama",
-        "model_id": "gemma2:2b",
+        "model_id": "gemma2:9b",
         "temperature": 0.8,
         "max_tokens": 512,
     },
     # Orchestrator model: used to generate (C, Q) seed pairs
     "orchestrator": {
         "backend": "ollama",
-        "model_id": "llama3.2:3b",
+        "model_id": "llama3.1:8b",
         "temperature": 0.9,
         "max_tokens": 1024,
     },
