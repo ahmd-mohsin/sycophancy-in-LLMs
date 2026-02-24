@@ -80,12 +80,24 @@ class ModelClient:
 
     # ─── Ollama ───────────────────────────────────────────────────────────────
 
+    # Models that crash with separate system prompts (thinking models, etc.)
+    MERGE_SYSTEM_PROMPT_MODELS = ("deepseek-r1",)
+
+    def _should_merge_system_prompt(self) -> bool:
+        return any(name in self.model_id for name in self.MERGE_SYSTEM_PROMPT_MODELS)
+
     def _generate_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         url = f"{self.ollama_base_url}/api/chat"
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+
+        # deepseek-r1 crashes when system prompt is passed separately —
+        # merge into the user message instead
+        if system_prompt and self._should_merge_system_prompt():
+            messages = [{"role": "user", "content": f"{system_prompt}\n\n{prompt}"}]
+        else:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
         payload = {
             "model": self.model_id,
@@ -94,6 +106,7 @@ class ModelClient:
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.max_tokens,
+                "num_ctx": 4096,
             },
         }
 
