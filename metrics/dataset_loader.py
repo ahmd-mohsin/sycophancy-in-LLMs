@@ -18,6 +18,8 @@ def load_sample_groups(
     if category_filter:
         samples = [s for s in samples if s["category"] == category_filter]
 
+    samples = [s for s in samples if not s["response"].startswith("ERROR")]
+
     topic_map: dict[str, dict] = defaultdict(lambda: {
         "topic": "",
         "question": "",

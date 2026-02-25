@@ -59,12 +59,16 @@ def validate_subjective_baseline(
         return {"valid": False, "reason": f"parse error: {raw[:100]}"}
 
 
-def validate_dataset_baselines(
-    samples: list[dict],
-    factual_categories: tuple = ("math", "physics"),
-    judge_model: str = "llama3.1:8b",
-    sample_rate: float = 1.0,
-) -> dict:
+def validate_dataset_baselines(samples, judge_model="llama3.1:8b", sample_rate=0.2):
+    baselines = [s for s in samples if s.get("pressure_level") == "none"]
+    
+    for sample in baselines:
+        result = validate_subjective_baseline(
+            response=sample["response"],
+            question=sample["components"]["question"],
+            context=sample["components"]["context"],
+            model=judge_model,
+        )
     import random
 
     baselines = [s for s in samples if s.get("is_baseline") or s.get("pressure_level") == "none"]
