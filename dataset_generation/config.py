@@ -19,7 +19,7 @@ MODEL_CONFIG = {
     },
     "physics": {
         "backend": "ollama",
-        "model_id": "mistral-nemo:12b",   # 12b, excellent at STEM
+        "model_id": "llama3.1:8b",   # Fast general model
         "temperature": 0.3,
         "max_tokens": 512,
     },
