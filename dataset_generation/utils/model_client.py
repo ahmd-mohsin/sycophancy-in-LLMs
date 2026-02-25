@@ -111,7 +111,7 @@ class ModelClient:
         }
 
         try:
-            resp = requests.post(url, json=payload, timeout=120)
+            resp = requests.post(url, json=payload, timeout=300)  # Increased to 5 minutes
             resp.raise_for_status()
             data = resp.json()
             return data["message"]["content"].strip()
