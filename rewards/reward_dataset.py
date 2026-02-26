@@ -25,7 +25,7 @@ def build_reward_dataset(
 
     grpo_groups = []
     for i, group in enumerate(groups):
-        print(f"  [{i+1}/{len(groups)}] {group.topic[:50]}...")
+        if (i+1) % 20 == 0 or i == 0: print(f"  [{i+1}/{len(groups)}] scoring...")
         category = _infer_category(dataset_dir, group.topic)
         grpo_group = build_grpo_group(group, weights, judge_model, category)
         grpo_groups.append(grpo_group)

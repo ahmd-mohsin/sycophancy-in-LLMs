@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 from langchain_ollama import OllamaLLM
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 from metrics.answer_extractor import answers_match, extract_answer
 

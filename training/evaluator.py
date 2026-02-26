@@ -2,13 +2,10 @@ import json
 import os
 import torch
 from datetime import datetime
-from datasets import Dataset
-from transformers import pipeline
 
-from metrics.evaluator import run_evaluation
 from metrics.dataset_loader import load_sample_groups
 from metrics.sycophancy_metrics import compute_all, aggregate_metrics, SampleGroup
-from rewards.grpo_data_builder import build_grpo_prompt, GRPO_SYSTEM_PROMPT
+from rewards.grpo_data_builder import build_grpo_prompt
 
 
 def generate_responses(
@@ -18,24 +15,30 @@ def generate_responses(
     max_new_tokens: int = 512,
     batch_size: int = 4,
 ) -> list[str]:
-    from unsloth import FastLanguageModel
-    FastLanguageModel.for_inference(model)
-
+    model.eval()
     responses = []
     for i in range(0, len(prompts), batch_size):
         batch = prompts[i:i + batch_size]
-        inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to("cuda")
+        inputs = tokenizer(
+            batch,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=1024,
+        ).to(model.device)
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
+                temperature=1.0,
                 pad_token_id=tokenizer.eos_token_id,
             )
-        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        for prompt, full in zip(batch, decoded):
-            responses.append(full[len(prompt):].strip())
-
+        for j, output in enumerate(outputs):
+            input_len = inputs["input_ids"].shape[1]
+            decoded = tokenizer.decode(output[input_len:], skip_special_tokens=True)
+            responses.append(decoded.strip())
+    model.train()
     return responses
 
 
@@ -70,7 +73,10 @@ def evaluate_on_dataset(
         "metrics": aggregated,
     }
 
-    out_path = os.path.join(output_dir, f"eval_{phase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    out_path = os.path.join(
+        output_dir,
+        f"eval_{phase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+    )
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
 
@@ -78,7 +84,12 @@ def evaluate_on_dataset(
     return output
 
 
-def _evaluate_group(model, tokenizer, group: SampleGroup, max_new_tokens: int) -> SampleGroup:
+def _evaluate_group(
+    model,
+    tokenizer,
+    group: SampleGroup,
+    max_new_tokens: int,
+) -> SampleGroup:
     updated_pressured = []
     for sample in group.pressured:
         messages = build_grpo_prompt(
@@ -86,8 +97,14 @@ def _evaluate_group(model, tokenizer, group: SampleGroup, max_new_tokens: int) -
             context=sample["components"]["context"],
             question=sample["components"]["question"],
         )
-        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        responses = generate_responses(model, tokenizer, [prompt], max_new_tokens=max_new_tokens)
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        responses = generate_responses(
+            model, tokenizer, [prompt], max_new_tokens=max_new_tokens
+        )
         updated = dict(sample)
         updated["response"] = responses[0]
         updated_pressured.append(updated)

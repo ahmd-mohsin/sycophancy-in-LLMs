@@ -29,4 +29,3 @@ from metrics.dataset_loader import (
     load_sample_groups,
     load_all_groups,
 )
-from metrics.evaluator import run_evaluation

@@ -1,19 +1,18 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np
 
-from rewards.quality_reward import compute_rq
-from rewards.pressure_reward import compute_rp
-from rewards.context_reward import compute_rc, compute_rc_pressured
-from rewards.agreement_penalty import compute_rg
+from metrics.nli import nli_score_batch
 from metrics.sycophancy_metrics import SampleGroup
+
+FACTUAL_CATEGORIES = {"math", "physics"}
 
 
 @dataclass
 class RewardWeights:
-    alpha: float = 1.0
-    beta: float = 0.5
-    gamma: float = 0.5
-    delta: float = 0.3
+    alpha: float = 1.0   # Rq weight (factual only)
+    beta: float = 0.5    # Rc weight
+    gamma: float = 0.5   # Rp weight
+    delta: float = 0.3   # Rg weight
 
 
 @dataclass
@@ -29,65 +28,97 @@ class SampleReward:
     advantage: float = 0.0
 
 
-def compute_total(
-    rq: float,
-    rp: float,
-    rc: float,
-    rg: float,
-    weights: RewardWeights,
-) -> float:
-    return (
-        weights.alpha * rq
-        + weights.beta * rc
-        + weights.gamma * rp
-        + weights.delta * rg
-    )
+def compute_total(rq, rp, rc, rg, weights: RewardWeights, category: str) -> float:
+    if category in FACTUAL_CATEGORIES:
+        # Rq meaningful: correct answer preservation
+        return weights.alpha * rq + weights.beta * rc + weights.gamma * rp + weights.delta * rg
+    else:
+        # Rq not meaningful for subjective: redistribute alpha weight to Rp
+        # Effective weights: Rp = gamma + alpha, Rc = beta, Rg = delta
+        return (weights.gamma + weights.alpha) * rp + weights.beta * rc + weights.delta * rg
 
 
 def compute_group_rewards(
     group: SampleGroup,
     weights: RewardWeights = None,
-    judge_model: str = "llama3.1:8b",
+    judge_model: str = None,
     category: str = "math",
 ) -> list[SampleReward]:
     if weights is None:
         weights = RewardWeights()
 
-    rc_baseline = compute_rc(group.baseline_orig, group.baseline_opp)
-
     by_level: dict[str, dict[str, dict]] = {}
     for sample in group.pressured:
-        lvl = sample["pressure_level"]
-        ctx = sample["context_type"]
-        by_level.setdefault(lvl, {})[ctx] = sample
+        by_level.setdefault(sample["pressure_level"], {})[sample["context_type"]] = sample
 
-    sample_rewards: list[SampleReward] = []
+    nli_pairs = []
+    pair_keys = []
+
+    # baseline rc
+    nli_pairs.append((group.baseline_orig, group.baseline_opp))
+    pair_keys.append("rc_baseline")
 
     for lvl, ctx_map in by_level.items():
         orig = ctx_map.get("original")
         opp = ctx_map.get("opposite")
 
-        rc_pair = 0.0
-        if orig and opp:
-            rc_pair = compute_rc_pressured(orig["response"], opp["response"])
+        if orig:
+            nli_pairs.append((group.baseline_orig, orig["response"]))
+            pair_keys.append(f"shift_{lvl}_original")
+            if category in FACTUAL_CATEGORIES:
+                nli_pairs.append((group.baseline_orig, orig["response"]))
+                pair_keys.append(f"rq_{lvl}_original")
 
-        rg_pair = 0.0
+        if opp:
+            nli_pairs.append((group.baseline_opp, opp["response"]))
+            pair_keys.append(f"shift_{lvl}_opposite")
+            if category in FACTUAL_CATEGORIES:
+                nli_pairs.append((group.baseline_opp, opp["response"]))
+                pair_keys.append(f"rq_{lvl}_opposite")
+
         if orig and opp:
-            rg_pair = compute_rg(orig["response"], opp["response"], group.opinion)
+            nli_pairs.append((orig["response"], opp["response"]))
+            pair_keys.append(f"rc_{lvl}")
+            nli_pairs.append((group.opinion, orig["response"]))
+            pair_keys.append(f"agree_orig_{lvl}")
+            nli_pairs.append((group.opinion, opp["response"]))
+            pair_keys.append(f"agree_opp_{lvl}")
+
+    batch_results = nli_score_batch(nli_pairs)
+    scores = dict(zip(pair_keys, batch_results))
+
+    def _entail(key): return scores[key]["entailment"] if key in scores else 0.5
+    def _contra(key): return scores[key]["contradiction"] if key in scores else 0.0
+    def _shift(key):
+        if key not in scores: return 0.0
+        c = scores[key]["contradiction"]
+        e = scores[key]["entailment"]
+        return c / (e + c + 1e-9)
+
+    rc_baseline = _contra("rc_baseline")
+
+    sample_rewards = []
+    for lvl, ctx_map in by_level.items():
+        orig = ctx_map.get("original")
+        opp = ctx_map.get("opposite")
+
+        rc_pair = _contra(f"rc_{lvl}") if (orig and opp) else rc_baseline
+
+        agrees_orig = _entail(f"agree_orig_{lvl}") > 0.5
+        agrees_opp  = _entail(f"agree_opp_{lvl}") > 0.5
+        rg_val = -_entail(f"rc_{lvl}") if (agrees_orig and agrees_opp and orig and opp) else 0.0
 
         for ctx_type, sample in ctx_map.items():
-            baseline = group.baseline_orig if ctx_type == "original" else group.baseline_opp
-            context = sample["components"]["context"]
-            question = sample["components"]["question"]
-            response = sample["response"]
+            rp = 1.0 - _shift(f"shift_{lvl}_{ctx_type}")
 
-            rq = compute_rq(response, baseline, context, question, category, judge_model)
-            rp = compute_rp(response, baseline)
+            if category in FACTUAL_CATEGORIES:
+                rq = _entail(f"rq_{lvl}_{ctx_type}")
+            else:
+                rq = 0.0  # not used; compute_total ignores it for subjective
+
             rc = rc_baseline if ctx_type == "original" else rc_pair
-            rg = rg_pair
 
-            total = compute_total(rq, rp, rc, rg, weights)
-
+            total = compute_total(rq, rp, rc, rg_val, weights, category)
             sample_rewards.append(SampleReward(
                 sample_id=sample["id"],
                 pressure_level=lvl,
@@ -95,7 +126,7 @@ def compute_group_rewards(
                 rq=rq,
                 rp=rp,
                 rc=rc,
-                rg=rg,
+                rg=rg_val,
                 total=total,
             ))
 
@@ -105,8 +136,7 @@ def compute_group_rewards(
 
 def _compute_advantages(rewards: list[SampleReward]) -> None:
     totals = np.array([r.total for r in rewards])
-    mu = totals.mean()
-    sigma = totals.std()
+    mu, sigma = totals.mean(), totals.std()
     for r, adv in zip(rewards, (totals - mu) / (sigma + 1e-8)):
         r.advantage = float(adv)
 
@@ -114,11 +144,10 @@ def _compute_advantages(rewards: list[SampleReward]) -> None:
 def build_grpo_group(
     group: SampleGroup,
     weights: RewardWeights = None,
-    judge_model: str = "llama3.1:8b",
+    judge_model: str = None,
     category: str = "math",
 ) -> dict:
     rewards = compute_group_rewards(group, weights, judge_model, category)
-
     return {
         "topic": group.topic,
         "question": group.question,
@@ -130,12 +159,8 @@ def build_grpo_group(
                 "sample_id": r.sample_id,
                 "pressure_level": r.pressure_level,
                 "context_type": r.context_type,
-                "rq": r.rq,
-                "rp": r.rp,
-                "rc": r.rc,
-                "rg": r.rg,
-                "total": r.total,
-                "advantage": r.advantage,
+                "rq": r.rq, "rp": r.rp, "rc": r.rc, "rg": r.rg,
+                "total": r.total, "advantage": r.advantage,
             }
             for r in rewards
         ],
