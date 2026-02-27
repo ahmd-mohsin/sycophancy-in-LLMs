@@ -1,4 +1,5 @@
 import argparse
+import glob
 import json
 import os
 import sys
@@ -16,6 +17,12 @@ from rewards.reward_dataset import build_reward_dataset
 from rewards.grpo_data_builder import build_grpo_training_data
 
 
+def latest_file(directory: str, pattern: str) -> str | None:
+    """Return the most recently modified file matching pattern, or None."""
+    matches = glob.glob(os.path.join(directory, pattern))
+    return max(matches, key=os.path.getmtime) if matches else None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Sycophancy RL Training Pipeline")
 
@@ -23,28 +30,29 @@ def parse_args():
     parser.add_argument("--dataset-dir", default="dataset_generation/output")
     parser.add_argument("--output-dir", default="training/output")
     parser.add_argument("--judge-model", default="llama3.1:8b")
-    parser.add_argument("--category", default="all", choices=["math", "physics", "political", "opinion", "all"])
+    parser.add_argument("--category", default="all",
+                        choices=["math", "physics", "political", "opinion", "all"])
     parser.add_argument("--max-seq-length", type=int, default=2048)
 
     parser.add_argument("--alpha", type=float, default=1.0)
-    parser.add_argument("--beta", type=float, default=0.5)
+    parser.add_argument("--beta",  type=float, default=0.5)
     parser.add_argument("--gamma", type=float, default=0.5)
     parser.add_argument("--delta", type=float, default=0.3)
 
-    parser.add_argument("--sft-batch-size", type=int, default=2)
-    parser.add_argument("--grpo-batch-size", type=int, default=1)
-    parser.add_argument("--sft-lr", type=float, default=2e-4)
-    parser.add_argument("--grpo-lr", type=float, default=5e-6)
-    parser.add_argument("--num-generations", type=int, default=4)
+    parser.add_argument("--sft-batch-size",   type=int,   default=2)
+    parser.add_argument("--grpo-batch-size",  type=int,   default=1)
+    parser.add_argument("--sft-lr",           type=float, default=2e-4)
+    parser.add_argument("--grpo-lr",          type=float, default=5e-6)
+    parser.add_argument("--num-generations",  type=int,   default=4)
 
-    parser.add_argument("--skip-sft", action="store_true")
-    parser.add_argument("--skip-grpo", action="store_true")
-    parser.add_argument("--skip-eval", action="store_true")
+    parser.add_argument("--skip-sft",       action="store_true")
+    parser.add_argument("--skip-grpo",      action="store_true")
+    parser.add_argument("--skip-eval",      action="store_true")
     parser.add_argument("--skip-data-prep", action="store_true")
 
-    parser.add_argument("--sft-data-path", default=None)
+    parser.add_argument("--sft-data-path",  default=None)
     parser.add_argument("--grpo-data-path", default=None)
-    parser.add_argument("--eval-dataset", default=None)
+    parser.add_argument("--eval-dataset",   default=None)
 
     return parser.parse_args()
 
@@ -53,19 +61,17 @@ def main():
     args = parse_args()
 
     rewards_output = os.path.join(args.output_dir, "rewards")
-    sft_ckpt = os.path.join(args.output_dir, "checkpoints", "sft")
-    grpo_ckpt = os.path.join(args.output_dir, "checkpoints", "grpo")
-    results_dir = os.path.join(args.output_dir, "results")
-    splits_dir = os.path.join(args.output_dir, "splits")
+    sft_ckpt       = os.path.join(args.output_dir, "checkpoints", "sft")
+    grpo_ckpt      = os.path.join(args.output_dir, "checkpoints", "grpo")
+    results_dir    = os.path.join(args.output_dir, "results")
+    splits_dir     = os.path.join(args.output_dir, "splits")
 
     for d in [rewards_output, sft_ckpt, grpo_ckpt, results_dir, splits_dir]:
         os.makedirs(d, exist_ok=True)
 
     weights = RewardWeights(
-        alpha=args.alpha,
-        beta=args.beta,
-        gamma=args.gamma,
-        delta=args.delta,
+        alpha=args.alpha, beta=args.beta,
+        gamma=args.gamma, delta=args.delta,
     )
 
     print(f"\n{'='*60}")
@@ -76,12 +82,11 @@ def main():
     print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} δ={weights.delta}")
     print(f"{'='*60}\n")
 
-    sft_data_path = args.sft_data_path
+    sft_data_path  = args.sft_data_path
     grpo_data_path = args.grpo_data_path
 
     if not args.skip_data_prep:
         print("── Data Preparation ─────────────────────────────────")
-
         print("Splitting datasets...")
         split_all_datasets(args.dataset_dir, splits_dir)
 
@@ -97,15 +102,30 @@ def main():
         )
 
         print("\nBuilding GRPO training data...")
-        grpo_data_path = build_grpo_training_data(reward_path, rewards_output)
+        grpo_data_path = build_grpo_training_data(reward_path, rewards_output, original_dataset_dir=args.dataset_dir)
+
+    else:
+        # Auto-discover latest files if not provided
+        if sft_data_path is None:
+            sft_data_path = latest_file(rewards_output, "sft_dataset_*.json")
+            if sft_data_path:
+                print(f"  Auto-discovered SFT data: {sft_data_path}")
+
+        if grpo_data_path is None:
+            grpo_data_path = latest_file(rewards_output, "grpo_training_*.json")
+            if grpo_data_path:
+                print(f"  Auto-discovered GRPO data: {grpo_data_path}")
+
+        if not sft_data_path or not grpo_data_path:
+            print("ERROR: --skip-data-prep used but no existing data found.")
+            print("  Run without --skip-data-prep first, or pass --sft-data-path and --grpo-data-path")
+            sys.exit(1)
 
     print("\n── Model Loading ────────────────────────────────────")
     model, tokenizer = load_model(args.model, max_seq_length=args.max_seq_length)
-    model = get_peft_model(model)
 
     eval_dataset = args.eval_dataset
     if eval_dataset is None:
-        import glob
         test_files = glob.glob(os.path.join(splits_dir, "*_test.json"))
         eval_dataset = test_files[0] if test_files else None
 
@@ -113,7 +133,9 @@ def main():
         print("\n── Pre-training Evaluation ──────────────────────────")
         evaluate_on_dataset(model, tokenizer, eval_dataset, results_dir, phase="pre_training")
 
-    if not args.skip_sft and sft_data_path:
+    model = get_peft_model(model)
+
+    if not args.skip_sft:
         print("\n── Phase 1: SFT Warmup ──────────────────────────────")
         model, tokenizer, sft_stats = run_sft(
             model=model,
@@ -124,12 +146,11 @@ def main():
             per_device_batch_size=args.sft_batch_size,
             learning_rate=args.sft_lr,
         )
-
         if not args.skip_eval and eval_dataset:
             print("\n── Post-SFT Evaluation ──────────────────────────────")
             evaluate_on_dataset(model, tokenizer, eval_dataset, results_dir, phase="post_sft")
 
-    if not args.skip_grpo and grpo_data_path:
+    if not args.skip_grpo:
         print("\n── Phase 2: GRPO Training ───────────────────────────")
         model, tokenizer, grpo_stats = run_grpo(
             model=model,
@@ -144,7 +165,6 @@ def main():
             learning_rate=args.grpo_lr,
             num_generations=args.num_generations,
         )
-
         if not args.skip_eval and eval_dataset:
             print("\n── Post-GRPO Evaluation ─────────────────────────────")
             evaluate_on_dataset(model, tokenizer, eval_dataset, results_dir, phase="post_grpo")

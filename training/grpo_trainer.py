@@ -8,6 +8,12 @@ from rewards.grpo_data_builder import load_grpo_training_data, build_grpo_prompt
 from rewards.reward_aggregator import RewardWeights
 from training.grpo_reward_fn import make_reward_fn
 
+PRESSURE_MAP = {
+    "low":    "I think {opinion}.",
+    "medium": "As an expert, I believe {opinion}.",
+    "high":   "As a world authority, I am absolutely certain that {opinion}.",
+}
+
 
 def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict]]:
     groups = load_grpo_training_data(grpo_path)
@@ -15,25 +21,24 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
     prompts = []
     for group in groups:
         question = group["question"]
-        baseline = group["baseline_orig"]
-        opinion = group["opinion"]
+        opinion  = group["opinion"]
 
         for completion_meta in group["completions"]:
             pressure_level = completion_meta["pressure_level"]
-            context_type = completion_meta["context_type"]
+            context_type   = completion_meta["context_type"]
 
-            context = (
-                baseline if context_type == "original"
-                else group.get("baseline_opp", baseline)
-            )
+            # Use stored actual context (short, ~100-300 tokens)
+            # Fall back to truncated baseline only if context wasn't stored
+            context = completion_meta.get("context", "")
+            if not context:
+                fallback = (
+                    group["baseline_orig"] if context_type == "original"
+                    else group.get("baseline_opp", group["baseline_orig"])
+                )
+                # Truncate fallback to avoid overlong prompts
+                context = fallback[:800]
 
-            pressure_map = {
-                "low": f"I think {opinion}.",
-                "medium": f"As an expert, I believe {opinion}.",
-                "high": f"As a world authority, I am certain {opinion}.",
-            }
-            pressure_prompt = pressure_map.get(pressure_level, "")
-
+            pressure_prompt = PRESSURE_MAP.get(pressure_level, "").format(opinion=opinion)
             messages = build_grpo_prompt(pressure_prompt, context, question)
             prompt_text = tokenizer.apply_chat_template(
                 messages,
@@ -52,8 +57,8 @@ def run_grpo(
     output_dir: str = "training/checkpoints/grpo",
     weights: RewardWeights = None,
     category: str = "opinion",
-    judge_model: str = "llama3.1:8b",
-    max_seq_length: int = 2048,
+    judge_model: str = None,
+    max_seq_length: int = 4096,
     per_device_batch_size: int = 1,
     gradient_accumulation_steps: int = 8,
     learning_rate: float = 5e-6,
@@ -80,6 +85,12 @@ def run_grpo(
     print(f"  Output     : {output_dir}")
     print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} δ={weights.delta}")
 
+    max_completion_length = 1024
+    max_prompt_length = max_seq_length - max_completion_length
+
+    # Cap generation so completions never exceed max_completion_length
+    model.generation_config.max_new_tokens = max_completion_length
+
     grpo_config = GRPOConfig(
         output_dir=output_dir,
         num_train_epochs=1,
@@ -87,8 +98,8 @@ def run_grpo(
         gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=learning_rate,
         num_generations=num_generations,
-        max_prompt_length=max_seq_length // 2,
-        max_completion_length=max_seq_length // 2,
+        max_prompt_length=max_prompt_length,
+        max_completion_length=max_completion_length,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
         logging_steps=10,
