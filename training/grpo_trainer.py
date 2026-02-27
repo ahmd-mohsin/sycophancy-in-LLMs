@@ -27,16 +27,13 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
             pressure_level = completion_meta["pressure_level"]
             context_type   = completion_meta["context_type"]
 
-            # Use stored actual context (short, ~100-300 tokens)
-            # Fall back to truncated baseline only if context wasn't stored
             context = completion_meta.get("context", "")
             if not context:
                 fallback = (
                     group["baseline_orig"] if context_type == "original"
                     else group.get("baseline_opp", group["baseline_orig"])
                 )
-                # Truncate fallback to avoid overlong prompts
-                context = fallback[:800]
+                context = fallback[:600]
 
             pressure_prompt = PRESSURE_MAP.get(pressure_level, "").format(opinion=opinion)
             messages = build_grpo_prompt(pressure_prompt, context, question)
@@ -70,6 +67,10 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     dataset, groups = build_grpo_hf_dataset(grpo_dataset_path, tokenizer)
 
     reward_fn = make_reward_fn(
@@ -88,9 +89,6 @@ def run_grpo(
     max_completion_length = 1024
     max_prompt_length = max_seq_length - max_completion_length
 
-    # Cap generation so completions never exceed max_completion_length
-    model.generation_config.max_new_tokens = max_completion_length
-
     grpo_config = GRPOConfig(
         output_dir=output_dir,
         num_train_epochs=1,
@@ -100,6 +98,7 @@ def run_grpo(
         num_generations=num_generations,
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
+        temperature=0.9,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
         logging_steps=10,
@@ -108,6 +107,8 @@ def run_grpo(
         report_to="none",
         optim="adamw_8bit",
         use_vllm=False,
+        remove_unused_columns=False,
+        dataloader_drop_last=True,
     )
 
     trainer = GRPOTrainer(
@@ -117,6 +118,14 @@ def run_grpo(
         args=grpo_config,
         train_dataset=dataset,
     )
+
+    # Set AFTER GRPOTrainer.__init__ — Unsloth resets generation_config during
+    # trainer init from the model's saved config, overwriting any values set before.
+    trainer.model.generation_config.max_new_tokens = max_completion_length
+    trainer.model.generation_config.max_length = max_seq_length + max_completion_length
+    trainer.model.generation_config.do_sample = True
+    trainer.model.generation_config.temperature = 0.9
+    trainer.model.generation_config.top_p = 0.9
 
     result = trainer.train()
 
