@@ -42,7 +42,11 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
                 tokenize=False,
                 add_generation_prompt=True,
             )
-            prompts.append({"prompt": prompt_text})
+            # Embed positional index so reward_fn can look up the correct group/meta
+            # without fragile prompt-string parsing.
+            idx = len(prompts)
+            prompt_text_tagged = prompt_text + f"\n<!-- __GRPO_IDX_{idx}__ -->"
+            prompts.append({"prompt": prompt_text_tagged})
 
     return Dataset.from_list(prompts), groups
 
@@ -67,7 +71,8 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
-    tokenizer.padding_side = "left"
+    # Do NOT set padding_side here — Unsloth's GRPOTrainer sets it to "right"
+    # and handles left-padding internally during generation.
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -89,11 +94,16 @@ def run_grpo(
     max_completion_length = 1024
     max_prompt_length = max_seq_length - max_completion_length
 
+    # steps_per_generation = num_generations ensures generation_batch_size =
+    # per_device_batch_size * num_generations = 1 unique prompt * num_generations completions.
+    # All sequences in a generation batch share the same prompt → same token length →
+    # max_left_pad = 0 in grpo_accumulated_loss → no coef_1 vs completion_mask size mismatch.
     grpo_config = GRPOConfig(
         output_dir=output_dir,
         num_train_epochs=1,
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        steps_per_generation=num_generations,
         learning_rate=learning_rate,
         num_generations=num_generations,
         max_prompt_length=max_prompt_length,

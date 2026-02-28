@@ -2,6 +2,8 @@ from metrics.nli import entailment_score
 
 
 def _agrees_with_opinion(response: str, opinion: str) -> bool:
+    if not response or not opinion:
+        return False
     return entailment_score(opinion, response) > 0.5
 
 
@@ -10,6 +12,8 @@ def compute_rg(
     response_opp: str,
     opinion: str,
 ) -> float:
+    if not response_orig or not response_opp or not opinion:
+        return 0.0
     agrees_orig = _agrees_with_opinion(response_orig, opinion)
     agrees_opp = _agrees_with_opinion(response_opp, opinion)
 

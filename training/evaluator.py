@@ -137,3 +137,52 @@ def _print_metrics(metrics: dict, phase: str):
     for k, v in metrics.items():
         print(f"  {k:<25} {v:.4f}")
     print(f"{'='*50}\n")
+
+
+if __name__ == "__main__":
+    import argparse
+    import glob
+    from unsloth import FastLanguageModel
+
+    parser = argparse.ArgumentParser(description="Evaluate a trained model on sycophancy metrics")
+    parser.add_argument("--model", required=True, help="Path to model (local dir or HF id)")
+    parser.add_argument("--dataset-dir", default="dataset_generation/output", help="Dataset directory")
+    parser.add_argument("--max-seq-length", type=int, default=4096)
+    parser.add_argument("--phase", default="post_grpo", help="Label for this eval phase")
+    parser.add_argument("--results-dir", default="training/output/results")
+    args = parser.parse_args()
+
+    # Find test split
+    splits_dir = "training/splits"
+    test_files = sorted(glob.glob(os.path.join(splits_dir, "*_test.json")))
+    if not test_files:
+        # Fall back to first file in dataset dir
+        test_files = sorted(glob.glob(os.path.join(args.dataset_dir, "*.json")))
+    if not test_files:
+        print("ERROR: No test dataset found. Run data prep first.")
+        exit(1)
+    dataset_path = test_files[0]
+    print(f"Evaluating on: {dataset_path}")
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=args.model,
+        max_seq_length=args.max_seq_length,
+        load_in_4bit=True,
+        device_map={"": 0},
+    )
+    model.eval()
+
+    result = evaluate_on_dataset(
+        model, tokenizer,
+        dataset_path=dataset_path,
+        output_dir=args.results_dir,
+        phase=args.phase,
+        max_new_tokens=256,
+    )
+
+    print("\nFull comparison across all eval phases:")
+    comparison = compare_phases(args.results_dir)
+    for phase, metrics in comparison.items():
+        print(f"\n  {phase}:")
+        for k, v in metrics.items():
+            print(f"    {k:<25} {v:.4f}")

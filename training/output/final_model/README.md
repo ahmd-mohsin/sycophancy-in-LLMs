@@ -1,11 +1,13 @@
 ---
-base_model: unsloth/llama-3.1-8b-instruct
+base_model: unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
 library_name: peft
 pipeline_tag: text-generation
 tags:
-- base_model:adapter:unsloth/llama-3.1-8b-instruct
+- base_model:adapter:unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
+- grpo
 - lora
 - transformers
+- trl
 - unsloth
 ---
 

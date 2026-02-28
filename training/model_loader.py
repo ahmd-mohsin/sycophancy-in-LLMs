@@ -16,7 +16,7 @@ _loaded_model_name = None
 def load_model(
     model_name: str = "unsloth/llama-3.1-8b-instruct",
     max_seq_length: int = 2048,
-    load_in_4bit: bool = False,
+    load_in_4bit: bool = True,
     dtype: torch.dtype = None,
 ) -> tuple:
     global _loaded_model, _loaded_tokenizer, _loaded_model_name
@@ -24,11 +24,15 @@ def load_model(
     if _loaded_model is not None and _loaded_model_name == model_name:
         return _loaded_model, _loaded_tokenizer
 
+    import os
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
         max_seq_length=max_seq_length,
-        load_in_4bit=load_in_4bit,
+        load_in_4bit=True,   # always 4bit — avoids device_map=auto fallback
         dtype=dtype,
+        device_map={"":0},  # force all layers to GPU 0, never meta/CPU
     )
 
     _loaded_model = model
