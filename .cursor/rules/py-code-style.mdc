@@ -1,0 +1,7 @@
+---
+description: 
+globs: **/*.py
+alwaysApply: false
+---
+
+Do not write comments and use google style docstrings

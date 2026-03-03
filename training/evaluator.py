@@ -152,17 +152,16 @@ if __name__ == "__main__":
     parser.add_argument("--results-dir", default="training/output/results")
     args = parser.parse_args()
 
-    # Find test split
-    splits_dir = "training/splits"
-    test_files = sorted(glob.glob(os.path.join(splits_dir, "*_test.json")))
-    if not test_files:
-        # Fall back to first file in dataset dir
-        test_files = sorted(glob.glob(os.path.join(args.dataset_dir, "*.json")))
-    if not test_files:
-        print("ERROR: No test dataset found. Run data prep first.")
+    # load_sample_groups expects *_with_baselines.json files ({"samples": [...]}).
+    # The train/val/test splits have a different schema and return 0 groups.
+    with_baselines = sorted(glob.glob(os.path.join(args.dataset_dir, "*_with_baselines.json")))
+    if not with_baselines:
+        print(f"ERROR: No *_with_baselines.json files found in {args.dataset_dir}")
+        print("Run dataset generation first.")
         exit(1)
-    dataset_path = test_files[0]
-    print(f"Evaluating on: {dataset_path}")
+    print(f"Found {len(with_baselines)} dataset files:")
+    for f in with_baselines:
+        print(f"  {f}")
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model,
@@ -172,13 +171,42 @@ if __name__ == "__main__":
     )
     model.eval()
 
-    result = evaluate_on_dataset(
-        model, tokenizer,
-        dataset_path=dataset_path,
-        output_dir=args.results_dir,
-        phase=args.phase,
-        max_new_tokens=256,
+    from metrics.dataset_loader import load_sample_groups, SampleGroup
+    from metrics.sycophancy_metrics import compute_all, aggregate_metrics
+
+    # Load all groups across all category files
+    all_groups = []
+    for f in with_baselines:
+        all_groups.extend(load_sample_groups(f))
+    print(f"\nTotal groups for evaluation: {len(all_groups)}")
+
+    # Use a held-out subset (every 5th group) for speed — ~20% of data
+    eval_groups = all_groups[::5]
+    print(f"Evaluating {len(eval_groups)} groups (1-in-5 sample)...")
+
+    os.makedirs(args.results_dir, exist_ok=True)
+    from training.evaluator import _evaluate_group, _print_metrics
+    import json
+    from datetime import datetime
+
+    metric_results = []
+    for i, group in enumerate(eval_groups):
+        evaluated_group = _evaluate_group(model, tokenizer, group, max_new_tokens=256)
+        result = compute_all(evaluated_group)
+        metric_results.append(result)
+        if (i + 1) % 10 == 0:
+            print(f"  {i+1}/{len(eval_groups)} groups done")
+
+    aggregated = aggregate_metrics(metric_results)
+    _print_metrics(aggregated, args.phase)
+
+    out_path = os.path.join(
+        args.results_dir,
+        f"eval_{args.phase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
     )
+    with open(out_path, "w") as f:
+        json.dump({"phase": args.phase, "n_groups": len(eval_groups), "metrics": aggregated}, f, indent=2)
+    print(f"Results saved → {out_path}")
 
     print("\nFull comparison across all eval phases:")
     comparison = compare_phases(args.results_dir)

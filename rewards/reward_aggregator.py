@@ -9,10 +9,11 @@ FACTUAL_CATEGORIES = {"math", "physics"}
 
 @dataclass
 class RewardWeights:
-    alpha: float = 1.0   # Rq weight (factual only)
-    beta: float = 0.5    # Rc weight
-    gamma: float = 0.5   # Rp weight
-    delta: float = 0.3   # Rg weight
+    alpha: float   = 1.0   # Rq  — factual accuracy (factual categories only)
+    beta: float    = 0.5   # Rc  — context fidelity
+    gamma: float   = 0.5   # Rp  — pressure resistance
+    epsilon: float = 0.4   # Rpos — position consistency (new; targets PACF)
+    delta: float   = 0.6   # Rg  — generic agreement penalty (was 0.3; doubled to fix GAS)
 
 
 @dataclass
@@ -23,19 +24,37 @@ class SampleReward:
     rq: float
     rp: float
     rc: float
+    rpos: float
     rg: float
     total: float
     advantage: float = 0.0
 
 
-def compute_total(rq, rp, rc, rg, weights: RewardWeights, category: str) -> float:
+def compute_total(
+    rq,
+    rp: float,
+    rc: float,
+    rpos: float,
+    rg: float,
+    weights: RewardWeights,
+    category: str,
+) -> float:
     if category in FACTUAL_CATEGORIES:
-        # Rq meaningful: correct answer preservation
-        return weights.alpha * rq + weights.beta * rc + weights.gamma * rp + weights.delta * rg
+        return (
+            weights.alpha   * rq
+            + weights.beta  * rc
+            + weights.gamma * rp
+            + weights.epsilon * rpos
+            - weights.delta * rg
+        )
     else:
-        # Rq not meaningful for subjective: redistribute alpha weight to Rp
-        # Effective weights: Rp = gamma + alpha, Rc = beta, Rg = delta
-        return (weights.gamma + weights.alpha) * rp + weights.beta * rc + weights.delta * rg
+        # Rq not meaningful for subjective — redistribute alpha to Rp
+        return (
+            (weights.gamma + weights.alpha) * rp
+            + weights.beta    * rc
+            + weights.epsilon * rpos
+            - weights.delta   * rg
+        )
 
 
 def compute_group_rewards(
@@ -54,24 +73,27 @@ def compute_group_rewards(
     nli_pairs = []
     pair_keys = []
 
-    # baseline rc
     nli_pairs.append((group.baseline_orig, group.baseline_opp))
     pair_keys.append("rc_baseline")
 
     for lvl, ctx_map in by_level.items():
         orig = ctx_map.get("original")
-        opp = ctx_map.get("opposite")
+        opp  = ctx_map.get("opposite")
 
         if orig:
             nli_pairs.append((group.baseline_orig, orig["response"]))
             pair_keys.append(f"shift_{lvl}_original")
+            nli_pairs.append((group.baseline_orig, orig["response"]))
+            pair_keys.append(f"rpos_{lvl}_original")
             if category in FACTUAL_CATEGORIES:
                 nli_pairs.append((group.baseline_orig, orig["response"]))
                 pair_keys.append(f"rq_{lvl}_original")
 
         if opp:
-            nli_pairs.append((group.baseline_opp, opp["response"]))
+            nli_pairs.append((group.baseline_orig, opp["response"]))
             pair_keys.append(f"shift_{lvl}_opposite")
+            nli_pairs.append((group.baseline_orig, opp["response"]))
+            pair_keys.append(f"rpos_{lvl}_opposite")
             if category in FACTUAL_CATEGORIES:
                 nli_pairs.append((group.baseline_opp, opp["response"]))
                 pair_keys.append(f"rq_{lvl}_opposite")
@@ -87,20 +109,23 @@ def compute_group_rewards(
     batch_results = nli_score_batch(nli_pairs)
     scores = dict(zip(pair_keys, batch_results))
 
-    def _entail(key): return scores[key]["entailment"] if key in scores else 0.5
+    def _entail(key): return scores[key]["entailment"]    if key in scores else 0.5
     def _contra(key): return scores[key]["contradiction"] if key in scores else 0.0
     def _shift(key):
         if key not in scores: return 0.0
         c = scores[key]["contradiction"]
         e = scores[key]["entailment"]
         return c / (e + c + 1e-9)
+    def _rpos(key):
+        if key not in scores: return 0.0
+        return float(scores[key]["entailment"] - scores[key]["contradiction"])
 
     rc_baseline = _contra("rc_baseline")
 
     sample_rewards = []
     for lvl, ctx_map in by_level.items():
         orig = ctx_map.get("original")
-        opp = ctx_map.get("opposite")
+        opp  = ctx_map.get("opposite")
 
         rc_pair = _contra(f"rc_{lvl}") if (orig and opp) else rc_baseline
 
@@ -109,24 +134,22 @@ def compute_group_rewards(
         rg_val = -_entail(f"rc_{lvl}") if (agrees_orig and agrees_opp and orig and opp) else 0.0
 
         for ctx_type, sample in ctx_map.items():
-            rp = 1.0 - _shift(f"shift_{lvl}_{ctx_type}")
+            rp   = 1.0 - _shift(f"shift_{lvl}_{ctx_type}")
+            rpos = _rpos(f"rpos_{lvl}_{ctx_type}")
 
             if category in FACTUAL_CATEGORIES:
                 rq = _entail(f"rq_{lvl}_{ctx_type}")
             else:
-                rq = 0.0  # not used; compute_total ignores it for subjective
+                rq = 0.0
 
             rc = rc_baseline if ctx_type == "original" else rc_pair
 
-            total = compute_total(rq, rp, rc, rg_val, weights, category)
+            total = compute_total(rq, rp, rc, rpos, rg_val, weights, category)
             sample_rewards.append(SampleReward(
                 sample_id=sample["id"],
                 pressure_level=lvl,
                 context_type=ctx_type,
-                rq=rq,
-                rp=rp,
-                rc=rc,
-                rg=rg_val,
+                rq=rq, rp=rp, rc=rc, rpos=rpos, rg=rg_val,
                 total=total,
             ))
 
@@ -159,7 +182,8 @@ def build_grpo_group(
                 "sample_id": r.sample_id,
                 "pressure_level": r.pressure_level,
                 "context_type": r.context_type,
-                "rq": r.rq, "rp": r.rp, "rc": r.rc, "rg": r.rg,
+                "rq": r.rq, "rp": r.rp, "rc": r.rc,
+                "rpos": r.rpos, "rg": r.rg,
                 "total": r.total, "advantage": r.advantage,
             }
             for r in rewards

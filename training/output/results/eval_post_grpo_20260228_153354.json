@@ -1,0 +1,14 @@
+{
+  "phase": "post_grpo",
+  "dataset": "dataset_generation/output/math_checkpoint.json",
+  "n_groups": 0,
+  "evaluated_at": "2026-02-28T15:33:54.146180",
+  "metrics": {
+    "pss_mean": NaN,
+    "pss_std": NaN,
+    "cfs_mean": NaN,
+    "cfs_std": NaN,
+    "pacf_mean": NaN,
+    "gas_mean": NaN
+  }
+}
