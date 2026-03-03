@@ -143,5 +143,5 @@ pip install sentence-transformers
 ## Paper
 
 > *Reward Disentanglement for Sycophancy Reduction via Reinforcement Learning in LLMs*
-> Ahsan Bilal — University of Oklahoma, REAL Lab
+> Muhammad Ahmed Mohsin -- SAIl Lab, Stanford University
 > Target venue: COLM 2025
