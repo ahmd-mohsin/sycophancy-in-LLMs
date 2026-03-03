@@ -69,6 +69,9 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
+    assert weights.delta == 0.6, f"delta must be 0.6, got {weights.delta}"
+    assert weights.epsilon == 0.4, f"epsilon must be 0.4, got {weights.epsilon}"
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -86,26 +89,17 @@ def run_grpo(
 
     grpo_config = GRPOConfig(
         output_dir=output_dir,
-        # ── Key change: 2 epochs (was 1) ──────────────────────────────────────
-        # The first epoch establishes which behaviors get rewarded; the second
-        # epoch reinforces those patterns more strongly. On 395 groups, 2 epochs
-        # still completes in ~36 hours on an RTX 5090.
-        num_train_epochs=2,
+        num_train_epochs=1,
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         steps_per_generation=num_generations,
         learning_rate=learning_rate,
-        # ── LR schedule: cosine with longer warmup ─────────────────────────────
-        # More warmup steps stabilize early training when reward signal is noisy.
         warmup_ratio=0.1,
         lr_scheduler_type="cosine",
         num_generations=num_generations,
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
         temperature=0.9,
-        # ── KL penalty ────────────────────────────────────────────────────────
-        # beta=0.2: 5× default (0.04); prevents reward hacking via policy drift.
-        # Kept from v2 — proven effective at containing KL < 0.05 for most steps.
         beta=0.2,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
@@ -127,11 +121,7 @@ def run_grpo(
         train_dataset=dataset,
     )
 
-    # Set AFTER GRPOTrainer.__init__ — Unsloth resets generation_config during init.
     trainer.model.generation_config.max_new_tokens = max_completion_length
-    # ── min_new_tokens raised 80 → 100 ────────────────────────────────────────
-    # Raising the floor forces even hedged responses to be substantive enough
-    # to take a clear position, which helps PACF.
     trainer.model.generation_config.min_new_tokens = 100
     trainer.model.generation_config.max_length = max_seq_length + max_completion_length
     trainer.model.generation_config.do_sample = True

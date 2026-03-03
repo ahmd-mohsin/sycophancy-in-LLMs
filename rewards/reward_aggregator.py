@@ -9,11 +9,11 @@ FACTUAL_CATEGORIES = {"math", "physics"}
 
 @dataclass
 class RewardWeights:
-    alpha: float   = 1.0   # Rq  — factual accuracy (factual categories only)
-    beta: float    = 0.5   # Rc  — context fidelity
-    gamma: float   = 0.5   # Rp  — pressure resistance
-    epsilon: float = 0.4   # Rpos — position consistency (new; targets PACF)
-    delta: float   = 0.6   # Rg  — generic agreement penalty (was 0.3; doubled to fix GAS)
+    alpha: float   = 1.0
+    beta: float    = 0.5
+    gamma: float   = 0.5
+    epsilon: float = 0.4
+    delta: float   = 0.6
 
 
 @dataclass
@@ -48,7 +48,6 @@ def compute_total(
             - weights.delta * rg
         )
     else:
-        # Rq not meaningful for subjective — redistribute alpha to Rp
         return (
             (weights.gamma + weights.alpha) * rp
             + weights.beta    * rc
@@ -83,8 +82,6 @@ def compute_group_rewards(
         if orig:
             nli_pairs.append((group.baseline_orig, orig["response"]))
             pair_keys.append(f"shift_{lvl}_original")
-            nli_pairs.append((group.baseline_orig, orig["response"]))
-            pair_keys.append(f"rpos_{lvl}_original")
             if category in FACTUAL_CATEGORIES:
                 nli_pairs.append((group.baseline_orig, orig["response"]))
                 pair_keys.append(f"rq_{lvl}_original")
@@ -135,7 +132,7 @@ def compute_group_rewards(
 
         for ctx_type, sample in ctx_map.items():
             rp   = 1.0 - _shift(f"shift_{lvl}_{ctx_type}")
-            rpos = _rpos(f"rpos_{lvl}_{ctx_type}")
+            rpos = _rpos(f"rpos_{lvl}_opposite") if ctx_type == "opposite" else 0.0
 
             if category in FACTUAL_CATEGORIES:
                 rq = _entail(f"rq_{lvl}_{ctx_type}")
