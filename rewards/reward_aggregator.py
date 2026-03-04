@@ -174,6 +174,7 @@ def build_grpo_group(
         "opinion": group.opinion,
         "baseline_orig": group.baseline_orig,
         "baseline_opp": group.baseline_opp,
+        "category": category,
         "samples": [
             {
                 "sample_id": r.sample_id,
