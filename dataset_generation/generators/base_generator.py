@@ -1,23 +1,25 @@
 """
-generators/base_generator.py
+generators/base_generator.py  — v2
 
-Abstract base class for all category generators.
-Handles the full pipeline:
-  1. Seed (C, Q, opinion) generation via orchestrator model
-  2. Pressure prompt construction for all levels
-  3. Opposite context generation
-  4. Response collection via category-specific model
-  5. Checkpointing and saving
+Key changes from v1:
+  1. Baseline generation uses category-specific baseline_system_prompt (committed stance).
+  2. Baseline is generated from context (orig) and opposite_context separately,
+     ensuring baseline_orig and baseline_opp take genuinely opposing positions.
+  3. NLI validation: groups where contra(baseline_orig, baseline_opp) < NLI_THRESHOLD
+     are REJECTED and regenerated (up to MAX_SEED_RETRIES). This catches the
+     "both baselines converge to same centrist answer" failure mode at generation time.
+  4. opposite_opinion now stored in group metadata for proper Rpos reward computation.
+  5. Scoring is printed per group so you can monitor NLI quality live.
 """
 
 import abc
 import json
 import logging
 import uuid
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 from config import MODEL_CONFIG, OUTPUT_DIR, PRESSURE_LEVELS, OLLAMA_BASE_URL
-from pressure.templates import get_pressure_prompt, PRESSURE_TEMPLATES
+from pressure.templates import PRESSURE_TEMPLATES
 from utils.model_client import ModelClient
 from utils.io_utils import (
     build_sample,
@@ -29,20 +31,17 @@ from utils.io_utils import (
 
 logger = logging.getLogger(__name__)
 
+# NLI validation threshold: baseline_orig vs baseline_opp must contradict
+# each other by at least this probability. Groups below are regenerated.
+NLI_THRESHOLD = 0.40
+MAX_SEED_RETRIES = 5
+
 
 class BaseGenerator(abc.ABC):
-    """
-    Subclass this for each category. Override:
-      - `category`          (str)
-      - `seed_system_prompt` (str)  — instructions for generating (C, Q, opinion) seeds
-      - `response_system_prompt` (str) — instructions for the answering model
-      - `parse_seed`        (method) — parse orchestrator JSON into (topic, context, opposite_context, question, opinion)
-    """
-
     category: str = "base"
 
-    def __init__(self, resume: bool = True):
-        cfg = MODEL_CONFIG[self.category]
+    def __init__(self, resume: bool = True, validate_nli: bool = True):
+        cfg      = MODEL_CONFIG[self.category]
         orch_cfg = MODEL_CONFIG["orchestrator"]
 
         self.model = ModelClient(
@@ -60,10 +59,12 @@ class BaseGenerator(abc.ABC):
             ollama_base_url=OLLAMA_BASE_URL,
         )
 
+        self.validate_nli = validate_nli
+        self._nli_fn = None  # lazy-loaded
+
         self.output_dir = OUTPUT_DIR
         ensure_dir(self.output_dir)
 
-        # Checkpoint support
         self.checkpoint_path = f"{self.output_dir}/{self.category}_checkpoint.json"
         self.existing_samples: List[Dict] = []
         if resume:
@@ -72,52 +73,74 @@ class BaseGenerator(abc.ABC):
                 f"[{self.category}] Resuming from {len(self.existing_samples)} existing samples."
             )
 
-    # ─── Override these ───────────────────────────────────────────────────────
+    # ─── Abstract interface ────────────────────────────────────────────────
 
     @property
     @abc.abstractmethod
     def seed_system_prompt(self) -> str:
-        """System prompt for orchestrator model to generate seed (C, Q, opinion) JSON."""
+        """System prompt for orchestrator to generate seed JSON."""
         ...
 
     @property
     @abc.abstractmethod
     def response_system_prompt(self) -> str:
-        """System prompt for the category model when answering questions."""
+        """System prompt for category model when answering pressured questions."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def baseline_system_prompt(self) -> str:
+        """
+        System prompt for generating baselines.
+        Must force a committed, position-first response (no hedging).
+        This is separate from response_system_prompt because baselines
+        have no pressure prompt — they just see context + question.
+        """
         ...
 
     @abc.abstractmethod
     def parse_seed(self, raw: str) -> Optional[Dict[str, str]]:
         """
-        Parse orchestrator output into:
-        {
-          "topic": str,
-          "context": str,          # original context C
-          "opposite_context": str, # flipped context C'
-          "question": str,         # Q
-          "opinion": str,          # the opinion being pressured toward
-        }
+        Parse orchestrator output. Must return a dict with keys:
+          topic, question, context, opposite_context, opinion, opposite_opinion
         Return None on parse failure.
         """
         ...
 
-    # ─── Internal helpers ─────────────────────────────────────────────────────
+    # ─── NLI validation ────────────────────────────────────────────────────
 
-    def _assemble_prompt(
-        self,
-        pressure_prompt: str,
-        context: str,
-        question: str,
-    ) -> str:
-        """Combine P + C + Q into the final prompt sent to the model."""
+    def _get_nli(self):
+        if self._nli_fn is None:
+            from metrics.nli import contradiction_score
+            self._nli_fn = contradiction_score
+        return self._nli_fn
+
+    def _nli_valid(self, baseline_orig: str, baseline_opp: str) -> tuple[bool, float]:
+        """
+        Returns (is_valid, contra_score).
+        A group is valid if baseline_orig and baseline_opp clearly contradict each other.
+        """
+        if not self.validate_nli:
+            return True, 1.0
+        contra = self._get_nli()(baseline_orig, baseline_opp)
+        return contra >= NLI_THRESHOLD, contra
+
+    # ─── Prompt assembly ──────────────────────────────────────────────────
+
+    def _assemble_prompt(self, pressure_prompt: str, context: str, question: str) -> str:
         return (
             f"{pressure_prompt}\n\n"
             f"Context: {context}\n\n"
             f"Question: {question}"
         )
 
+    def _baseline_prompt(self, context: str, question: str) -> str:
+        """Baseline has no pressure prompt — just context and question."""
+        return f"Context: {context}\n\nQuestion: {question}"
+
+    # ─── Generation helpers ───────────────────────────────────────────────
+
     def _generate_seed(self) -> Optional[Dict[str, str]]:
-        """Ask the orchestrator to generate one (topic, C, C', Q, opinion) tuple."""
         raw = self.orchestrator.generate(
             prompt="Generate one example now. Return only valid JSON, nothing else.",
             system_prompt=self.seed_system_prompt,
@@ -125,29 +148,55 @@ class BaseGenerator(abc.ABC):
         return self.parse_seed(raw)
 
     def _get_response(self, full_prompt: str) -> str:
-        """Get the category model's response to the assembled prompt."""
         return self.model.generate(
             prompt=full_prompt,
             system_prompt=self.response_system_prompt,
         )
 
-    def _build_samples_for_seed(
-        self, seed: Dict[str, str], seed_index: int
-    ) -> List[Dict[str, Any]]:
-        """
-        For one seed, produce 6 samples:
-          3 pressure levels × 2 context types (original, opposite)
-        """
-        samples = []
-        topic = seed["topic"]
-        original_ctx = seed["context"]
-        opposite_ctx = seed["opposite_context"]
-        question = seed["question"]
-        opinion = seed["opinion"]
+    def _get_baseline(self, context: str, question: str) -> str:
+        prompt = self._baseline_prompt(context, question)
+        return self.model.generate(
+            prompt=prompt,
+            system_prompt=self.baseline_system_prompt,
+        )
 
-        # Pick one template per pressure level (rotate by seed_index)
+    # ─── Core: build one group ────────────────────────────────────────────
+
+    def _build_group_for_seed(
+        self, seed: Dict[str, str], seed_index: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Build baselines and 6 pressured samples for one seed.
+        Returns None if NLI validation fails (caller will retry with new seed).
+        """
+        topic         = seed["topic"]
+        original_ctx  = seed["context"]
+        opposite_ctx  = seed["opposite_context"]
+        question      = seed["question"]
+        opinion       = seed["opinion"]
+        opp_opinion   = seed.get("opposite_opinion", "")
+
+        # Generate baselines using committed baseline_system_prompt
+        try:
+            baseline_orig = self._get_baseline(original_ctx, question)
+            baseline_opp  = self._get_baseline(opposite_ctx, question)
+        except Exception as e:
+            logger.warning(f"  Baseline generation failed: {e}")
+            return None
+
+        # NLI gate: reject groups where baselines don't clearly contradict
+        valid, contra_score = self._nli_valid(baseline_orig, baseline_opp)
+        logger.info(
+            f"  [{self.category}] seed={seed_index} NLI contra(orig,opp)={contra_score:.3f} "
+            f"{'✓ PASS' if valid else '✗ FAIL — will retry'}"
+        )
+        if not valid:
+            return None
+
+        # Build pressured samples
+        samples = []
         for level in PRESSURE_LEVELS:
-            templates = PRESSURE_TEMPLATES[level]
+            templates     = PRESSURE_TEMPLATES[level]
             pressure_prompt = templates[seed_index % len(templates)].format(opinion=opinion)
 
             for ctx_type, context in [("original", original_ctx), ("opposite", opposite_ctx)]:
@@ -156,7 +205,7 @@ class BaseGenerator(abc.ABC):
                 try:
                     response = self._get_response(full_prompt)
                 except Exception as e:
-                    logger.warning(f"Response generation failed for seed {seed_index}: {e}")
+                    logger.warning(f"  Response failed for seed={seed_index} level={level} ctx={ctx_type}: {e}")
                     response = "ERROR: generation failed"
 
                 sample = build_sample(
@@ -173,77 +222,90 @@ class BaseGenerator(abc.ABC):
                     sample_id=f"{self.category}_{seed_index:04d}_{level}_{ctx_type}_{uuid.uuid4().hex[:6]}",
                 )
                 samples.append(sample)
-                logger.debug(f"  [{self.category}] seed={seed_index} level={level} ctx={ctx_type} ✓")
+                logger.debug(f"    [{self.category}] seed={seed_index} level={level} ctx={ctx_type} ✓")
 
-        return samples
+        return {
+            "topic":           topic,
+            "question":        question,
+            "opinion":         opinion,
+            "opposite_opinion": opp_opinion,
+            "baseline_orig":   baseline_orig,
+            "baseline_opp":    baseline_opp,
+            "nli_contra":      round(contra_score, 4),
+            "samples":         samples,
+        }
 
-    # ─── Public API ───────────────────────────────────────────────────────────
+    # ─── Public API ───────────────────────────────────────────────────────
 
     def generate(self, n_topics: int = 100) -> List[Dict[str, Any]]:
         """
-        Generate n_topics seeds and produce 6 samples each (= 6×n_topics total).
-        Checkpoints after every seed. Resumes from checkpoint if resume=True.
-
-        Args:
-            n_topics: Number of unique (C, Q) seeds to generate.
-
-        Returns:
-            List of all samples including any from a prior checkpoint run.
+        Generate n_topics valid groups (each with 6 pressured samples + 2 baselines).
+        Groups that fail NLI validation are regenerated.
+        Checkpoints after every valid group.
         """
-        all_samples = list(self.existing_samples)
-        # How many seeds have already been fully processed?
-        completed_seeds = len(all_samples) // 6
-        remaining = n_topics - completed_seeds
-
+        all_groups = list(self.existing_samples)
+        completed  = len(all_groups)
         logger.info(
-            f"[{self.category}] Need {n_topics} seeds. "
-            f"{completed_seeds} already done. Generating {remaining} more."
+            f"[{self.category}] Need {n_topics} groups. "
+            f"{completed} already done. Generating {n_topics - completed} more."
         )
 
-        for i in range(completed_seeds, n_topics):
-            logger.info(f"[{self.category}] Seed {i+1}/{n_topics} ...")
+        generated = completed
+        attempt_global = 0
 
-            # Retry seed generation up to 5 times
+        while generated < n_topics:
+            attempt_global += 1
+            if attempt_global > n_topics * MAX_SEED_RETRIES * 2:
+                logger.error(
+                    f"[{self.category}] Exceeded maximum generation attempts. "
+                    f"Generated {generated}/{n_topics} groups."
+                )
+                break
+
+            logger.info(f"[{self.category}] Group {generated+1}/{n_topics} — attempt {attempt_global}")
+
+            # Retry seed parse
             seed = None
-            for attempt in range(5):
+            for parse_attempt in range(5):
                 seed = self._generate_seed()
                 if seed:
                     break
-                logger.warning(f"  Seed parse failed (attempt {attempt+1}/5), retrying...")
+                logger.warning(f"  Seed parse failed (attempt {parse_attempt+1}/5)")
 
             if not seed:
-                logger.error(f"  Skipping seed {i+1} after 5 failed attempts.")
+                logger.error(f"  Skipping — 5 consecutive parse failures.")
                 continue
 
-            new_samples = self._build_samples_for_seed(seed, seed_index=i)
-            all_samples.extend(new_samples)
+            group = self._build_group_for_seed(seed, seed_index=generated)
+            if group is None:
+                # NLI validation failed — try a fresh seed
+                continue
 
-            # Checkpoint after every seed
-            save_checkpoint(all_samples, self.category, self.output_dir)
-            logger.info(f"  [{self.category}] Checkpoint saved ({len(all_samples)} samples total).")
+            all_groups.append(group)
+            generated += 1
 
-        # Final save
+            save_checkpoint(all_groups, self.category, self.output_dir)
+            logger.info(f"  [{self.category}] Checkpoint saved ({generated} groups).")
+
         filepath = save_dataset(
-            samples=all_samples,
+            samples=all_groups,
             category=self.category,
             output_dir=self.output_dir,
-            metadata={"n_topics": n_topics, "samples_per_topic": 6},
+            metadata={"n_topics": n_topics, "samples_per_topic": 6, "version": "v2"},
         )
         logger.info(f"[{self.category}] Dataset complete → {filepath}")
-        return all_samples
+        return all_groups
 
 
 def _parse_json_safe(raw: str) -> Optional[Dict]:
     """Strip markdown fences and parse JSON. Returns None on failure."""
     raw = raw.strip()
-    # Strip ```json ... ``` fences
     if raw.startswith("```"):
         lines = raw.splitlines()
         raw = "\n".join(lines[1:-1]) if len(lines) > 2 else raw
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Try extracting the first {...} block
         import re
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
