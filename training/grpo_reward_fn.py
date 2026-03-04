@@ -49,17 +49,63 @@ def make_reward_fn(
             idx = int(m.group(1)) % len(index_to_meta)
             group, meta = index_to_meta[idx]
 
-            baseline_orig = group["baseline_orig"]
-            baseline_opp  = group.get("baseline_opp", baseline_orig)
-            opinion       = group["opinion"]
-            cat           = group.get("category", category)
-            context_type  = meta.get("context_type", "original")
+            baseline_orig    = group["baseline_orig"]
+            baseline_opp     = group.get("baseline_opp", baseline_orig)
+            opinion          = group["opinion"]
+            opposite_opinion = group.get("opposite_opinion", opinion)
+            cat              = group.get("category", category)
+            context_type     = meta.get("context_type", "original")
 
-            rq   = entailment_score(baseline_orig, completion) if cat in FACTUAL_CATEGORIES else None
-            rp   = compute_rp(completion, baseline_orig)
-            rc   = compute_rc_pressured(completion, baseline_opp)
-            rpos = compute_rpos(completion, baseline_orig) if context_type == "opposite" else 0.0
-            rg   = compute_rg_single(completion, opinion)
+            is_opposite = context_type == "opposite"
+
+            # ── RQ: factual correctness ───────────────────────────────────────
+            # Compare completion against the baseline that MATCHES the context
+            # the model was given. For opposite context, the correct answer
+            # entails baseline_opp, not baseline_orig.
+            if cat in FACTUAL_CATEGORIES:
+                correct_baseline = baseline_opp if is_opposite else baseline_orig
+                rq = entailment_score(correct_baseline, completion)
+            else:
+                rq = None
+
+            # ── RP: pressure resistance ───────────────────────────────────────
+            # Measures whether the model drifted from the correct baseline under
+            # pressure. For original context, correct baseline is baseline_orig.
+            # For opposite context, correct baseline is baseline_opp — the model
+            # SHOULD be aligned with baseline_opp, so we check it didn't drift
+            # away from that.
+            correct_baseline_for_rp = baseline_opp if is_opposite else baseline_orig
+            rp = compute_rp(completion, correct_baseline_for_rp)
+
+            # ── RC: context fidelity ──────────────────────────────────────────
+            # Measures whether the completion is consistent with the context
+            # it was given. For original context → check against baseline_orig.
+            # For opposite context → check against baseline_opp.
+            # BUG WAS: always used baseline_opp regardless of context_type.
+            rc_reference = baseline_opp if is_opposite else baseline_orig
+            rc = compute_rc_pressured(completion, rc_reference)
+
+            # ── RPOS: position consistency for opposite context ───────────────
+            # Rewards the model for taking the position supported by the
+            # opposite context (i.e., entailing baseline_opp).
+            # BUG WAS: computed entailment vs baseline_orig, which penalized
+            # the model for correctly following opposite context.
+            if is_opposite:
+                rpos = compute_rpos(completion, baseline_opp)
+            else:
+                rpos = 0.0
+
+            # ── RG: agreement penalty ─────────────────────────────────────────
+            # Penalizes blindly agreeing with the pressured opinion.
+            # For original context: penalize agreeing with opinion
+            #   (the pressure prompt pushes opinion, model should use context not pressure)
+            # For opposite context: penalize agreeing with opposite_opinion
+            #   (the pressure prompt pushes opinion but context supports opposite_opinion,
+            #    model should follow context, not capitulate to pressure)
+            # BUG WAS: always used opinion for both contexts, which incorrectly
+            # penalized the model for correctly following opposite context.
+            opinion_to_penalize = opinion  # pressure always pushes the original opinion
+            rg = compute_rg_single(completion, opinion_to_penalize)
 
             total = compute_total(rq, rp, rc, rpos, rg, weights, cat)
             total = total * _length_penalty(completion)

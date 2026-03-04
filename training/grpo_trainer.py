@@ -29,6 +29,7 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
 
             context = completion_meta.get("context", "")
             if not context:
+                # Fallback: use the matching baseline as context proxy
                 fallback = (
                     group["baseline_orig"] if context_type == "original"
                     else group.get("baseline_opp", group["baseline_orig"])
@@ -42,8 +43,11 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
                 tokenize=False,
                 add_generation_prompt=True,
             )
+
+            # Embed IDX BEFORE the generation prompt end so it stays within
+            # the prompt portion and won't be cut if the context is long.
             idx = len(prompts)
-            prompt_text_tagged = prompt_text + f"\n<!-- __GRPO_IDX_{idx}__ -->"
+            prompt_text_tagged = f"<!-- __GRPO_IDX_{idx}__ -->\n" + prompt_text
             prompts.append({"prompt": prompt_text_tagged})
 
     return Dataset.from_list(prompts), groups
@@ -69,8 +73,15 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
-    assert weights.delta == 0.6, f"delta must be 0.6, got {weights.delta}"
-    assert weights.epsilon == 0.4, f"epsilon must be 0.4, got {weights.epsilon}"
+    # Validate weights with informative errors instead of bare asserts
+    if weights.delta < 0.5:
+        raise ValueError(
+            f"weights.delta={weights.delta} is too low. "
+            f"GAS penalty should be >= 0.5 to prevent hedging. "
+            f"Pass --delta 0.6 (or set it explicitly)."
+        )
+    if weights.epsilon <= 0:
+        raise ValueError(f"weights.epsilon={weights.epsilon} must be > 0 for Rpos to have effect.")
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -79,20 +90,26 @@ def run_grpo(
     reward_fn = make_reward_fn(groups, weights=weights, category=category, judge_model=judge_model)
 
     print(f"\nPhase 2 — GRPO Training")
-    print(f"  Groups     : {len(groups)}")
-    print(f"  Prompts    : {len(dataset)}")
-    print(f"  Output     : {output_dir}")
-    print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} ε={weights.epsilon} δ={weights.delta}")
+    print(f"  Groups          : {len(groups)}")
+    print(f"  Prompts         : {len(dataset)}")
+    print(f"  num_generations : {num_generations}  (completions per prompt)")
+    print(f"  Effective batch : {per_device_batch_size * gradient_accumulation_steps}")
+    print(f"  Output          : {output_dir}")
+    print(f"  Weights         : α={weights.alpha} β={weights.beta} γ={weights.gamma} "
+          f"ε={weights.epsilon} δ={weights.delta}")
 
     max_completion_length = 1024
     max_prompt_length = max_seq_length - max_completion_length
 
     grpo_config = GRPOConfig(
         output_dir=output_dir,
-        num_train_epochs=1,
+        num_train_epochs=2,
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        steps_per_generation=num_generations,
+        # FIX: steps_per_generation controls gradient steps between generation rounds.
+        # Setting it equal to num_generations (4) means 4 gradient updates per round
+        # which is unusually high and slows training. Standard is 1.
+        steps_per_generation=1,
         learning_rate=learning_rate,
         warmup_ratio=0.1,
         lr_scheduler_type="cosine",
@@ -100,7 +117,7 @@ def run_grpo(
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
         temperature=0.9,
-        beta=0.2,
+        beta=0.2,                          # KL penalty coefficient
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
         logging_steps=10,
@@ -121,12 +138,12 @@ def run_grpo(
         train_dataset=dataset,
     )
 
-    trainer.model.generation_config.max_new_tokens = max_completion_length
-    trainer.model.generation_config.min_new_tokens = 100
-    trainer.model.generation_config.max_length = max_seq_length + max_completion_length
-    trainer.model.generation_config.do_sample = True
-    trainer.model.generation_config.temperature = 0.9
-    trainer.model.generation_config.top_p = 0.9
+    # Set generation constraints on the model config
+    trainer.model.generation_config.max_new_tokens  = max_completion_length
+    trainer.model.generation_config.min_new_tokens  = 100
+    trainer.model.generation_config.do_sample       = True
+    trainer.model.generation_config.temperature     = 0.9
+    trainer.model.generation_config.top_p           = 0.9
 
     result = trainer.train()
 
@@ -134,10 +151,10 @@ def run_grpo(
     tokenizer.save_pretrained(output_dir)
 
     stats = {
-        "train_loss": result.training_loss,
+        "train_loss":    result.training_loss,
         "train_runtime": result.metrics.get("train_runtime"),
-        "n_groups": len(groups),
-        "weights": weights.__dict__,
+        "n_groups":      len(groups),
+        "weights":       weights.__dict__,
     }
 
     with open(os.path.join(output_dir, "grpo_stats.json"), "w") as f:

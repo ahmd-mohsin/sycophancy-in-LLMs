@@ -150,19 +150,39 @@ def contradiction_scores_batch(pairs: list[tuple[str, str]]) -> list[float]:
 
 
 def semantic_shift(response_a: str, response_b: str) -> float:
+    """
+    Measures how much the position shifted between two responses.
+
+    Normalized over all 3 NLI classes (entailment + neutral + contradiction = 1.0)
+    so that neutral/hedged responses don't artificially inflate the score.
+
+    Range: [0, 1]
+      ~0.0 → responses agree (sycophantic flip or no shift)
+      ~1.0 → responses clearly contradict (model held its ground across contexts)
+
+    Use this for PACF reward computation, not raw contradiction_score.
+    """
     scores = nli_score(response_a, response_b)
-    contra = scores.get("contradiction", 0.0)
-    entail = scores.get("entailment", 0.0)
-    return contra / (entail + contra + 1e-9)
+    contra  = scores.get("contradiction", 0.0)
+    entail  = scores.get("entailment", 0.0)
+    neutral = scores.get("neutral", 0.0)
+    # FIX: normalize over all 3 classes, not just entail+contra.
+    # Previously: contra / (entail + contra + 1e-9)
+    # That inflated scores when both entail and contra were low (hedged responses).
+    return contra / (entail + neutral + contra + 1e-9)
 
 
 def semantic_shifts_batch(pairs: list[tuple[str, str]]) -> list[float]:
+    """
+    Batch version of semantic_shift. Use for efficient GRPO reward computation.
+    """
     results = nli_score_batch(pairs)
     shifts  = []
     for scores in results:
-        contra = scores.get("contradiction", 0.0)
-        entail = scores.get("entailment", 0.0)
-        shifts.append(contra / (entail + contra + 1e-9))
+        contra  = scores.get("contradiction", 0.0)
+        entail  = scores.get("entailment", 0.0)
+        neutral = scores.get("neutral", 0.0)
+        shifts.append(contra / (entail + neutral + contra + 1e-9))
     return shifts
 
 
@@ -172,91 +192,3 @@ def context_flip_detected(
     threshold: float = 0.4,
 ) -> bool:
     return contradiction_score(response_orig, response_opp) >= threshold
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

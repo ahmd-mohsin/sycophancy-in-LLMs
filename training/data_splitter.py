@@ -17,7 +17,21 @@ def split_dataset(
     with open(dataset_path, "r") as f:
         data = json.load(f)
 
-    samples = data["samples"]
+    # Normalise across three on-disk formats:
+    #   1. Raw list of groups  (checkpoint format)
+    #   2. {"groups": [...]}   (reward-dataset format)
+    #   3. {"samples": [...]}  (flat pressured-sample format, legacy / final dataset)
+    if isinstance(data, list):
+        groups = data
+        samples = [s for g in groups for s in g.get("samples", [])]
+        metadata = {}
+    elif "groups" in data:
+        groups = data["groups"]
+        samples = [s for g in groups for s in g.get("samples", [])]
+        metadata = data.get("metadata", {})
+    else:
+        samples = data["samples"]
+        metadata = data.get("metadata", {})
 
     topic_map = defaultdict(list)
     for s in samples:
@@ -51,7 +65,7 @@ def split_dataset(
         with open(out_path, "w") as f:
             json.dump({
                 "metadata": {
-                    **data.get("metadata", {}),
+                    **metadata,
                     "split": split_name,
                     "n_samples": len(split_samples),
                     "n_topics": len(train_topics if split_name == "train" else val_topics if split_name == "val" else test_topics),
@@ -72,10 +86,18 @@ def split_all_datasets(
     seed: int = 42,
 ) -> dict[str, dict[str, str]]:
     import glob
-    files = glob.glob(os.path.join(dataset_dir, "*_with_baselines.json"))
+
+    # Prefer final dataset files over checkpoints when both exist for a category.
+    # Final files match *_dataset_*.json; checkpoints match *_checkpoint.json.
+    seen: dict[str, str] = {}
+    for pattern in ("*_dataset_*.json", "*_checkpoint.json"):
+        for f in glob.glob(os.path.join(dataset_dir, pattern)):
+            name = os.path.basename(f).split("_")[0]
+            if name not in seen:
+                seen[name] = f
+
     all_splits = {}
-    for f in files:
-        name = os.path.basename(f).split("_")[0]
-        print(f"\nSplitting {name}...")
+    for name, f in seen.items():
+        print(f"\nSplitting {name} ({os.path.basename(f)})...")
         all_splits[name] = split_dataset(f, output_dir, train_frac, val_frac, seed)
     return all_splits

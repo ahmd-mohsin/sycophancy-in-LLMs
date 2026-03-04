@@ -18,7 +18,6 @@ from rewards.grpo_data_builder import build_grpo_training_data
 
 
 def latest_file(directory: str, pattern: str) -> str | None:
-    """Return the most recently modified file matching pattern, or None."""
     matches = glob.glob(os.path.join(directory, pattern))
     return max(matches, key=os.path.getmtime) if matches else None
 
@@ -34,10 +33,17 @@ def parse_args():
                         choices=["math", "physics", "political", "opinion", "all"])
     parser.add_argument("--max-seq-length", type=int, default=2048)
 
-    parser.add_argument("--alpha", type=float, default=1.0)
-    parser.add_argument("--beta",  type=float, default=0.5)
-    parser.add_argument("--gamma", type=float, default=0.5)
-    parser.add_argument("--delta", type=float, default=0.3)
+    # Reward weights — all exposed, all matching RewardWeights defaults
+    parser.add_argument("--alpha",   type=float, default=1.0,
+                        help="Weight for Rq (factual correctness)")
+    parser.add_argument("--beta",    type=float, default=0.5,
+                        help="Weight for Rc (context fidelity)")
+    parser.add_argument("--gamma",   type=float, default=0.5,
+                        help="Weight for Rp (pressure resistance)")
+    parser.add_argument("--epsilon", type=float, default=0.4,
+                        help="Weight for Rpos (position consistency)")
+    parser.add_argument("--delta",   type=float, default=0.6,
+                        help="Penalty weight for Rg (agreement penalty)")
 
     parser.add_argument("--sft-batch-size",   type=int,   default=2)
     parser.add_argument("--grpo-batch-size",  type=int,   default=1)
@@ -70,8 +76,11 @@ def main():
         os.makedirs(d, exist_ok=True)
 
     weights = RewardWeights(
-        alpha=args.alpha, beta=args.beta,
-        gamma=args.gamma, delta=args.delta,
+        alpha=args.alpha,
+        beta=args.beta,
+        gamma=args.gamma,
+        epsilon=args.epsilon,
+        delta=args.delta,
     )
 
     print(f"\n{'='*60}")
@@ -79,7 +88,8 @@ def main():
     print(f"{'='*60}")
     print(f"  Model      : {args.model}")
     print(f"  Dataset    : {args.dataset_dir}")
-    print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} δ={weights.delta}")
+    print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} "
+          f"ε={weights.epsilon} δ={weights.delta}")
     print(f"{'='*60}\n")
 
     sft_data_path  = args.sft_data_path
@@ -99,13 +109,16 @@ def main():
             output_dir=rewards_output,
             weights=weights,
             judge_model=args.judge_model,
+            category_filter=args.category if args.category != "all" else None,
         )
 
         print("\nBuilding GRPO training data...")
-        grpo_data_path = build_grpo_training_data(reward_path, rewards_output, original_dataset_dir=args.dataset_dir)
+        grpo_data_path = build_grpo_training_data(
+            reward_path, rewards_output,
+            original_dataset_dir=args.dataset_dir,
+        )
 
     else:
-        # Auto-discover latest files if not provided
         if sft_data_path is None:
             sft_data_path = latest_file(rewards_output, "sft_dataset_*.json")
             if sft_data_path:
@@ -118,7 +131,8 @@ def main():
 
         if not sft_data_path or not grpo_data_path:
             print("ERROR: --skip-data-prep used but no existing data found.")
-            print("  Run without --skip-data-prep first, or pass --sft-data-path and --grpo-data-path")
+            print("  Run without --skip-data-prep first, or pass "
+                  "--sft-data-path and --grpo-data-path explicitly.")
             sys.exit(1)
 
     print("\n── Model Loading ────────────────────────────────────")
@@ -158,6 +172,8 @@ def main():
             grpo_dataset_path=grpo_data_path,
             output_dir=grpo_ckpt,
             weights=weights,
+            # Pass the actual category string — grpo_reward_fn uses group["category"]
+            # per-sample so the top-level value is only used as a fallback.
             category=args.category if args.category != "all" else "opinion",
             judge_model=args.judge_model,
             max_seq_length=args.max_seq_length,
