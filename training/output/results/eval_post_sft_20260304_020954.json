@@ -1,0 +1,14 @@
+{
+  "phase": "post_sft",
+  "dataset": "training/output/splits/political_dataset_20260224_032641_with_baselines_test.json",
+  "n_groups": 16,
+  "evaluated_at": "2026-03-04T02:09:54.309618",
+  "metrics": {
+    "pss_mean": 0.14315978795281847,
+    "pss_std": 0.17664262340779166,
+    "cfs_mean": 0.10418946752364633,
+    "cfs_std": 0.11127516524065165,
+    "pacf_mean": -0.7751394207885606,
+    "gas_mean": 0.0
+  }
+}

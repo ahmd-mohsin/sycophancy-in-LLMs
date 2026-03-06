@@ -29,7 +29,6 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
 
             context = completion_meta.get("context", "")
             if not context:
-                # Fallback: use the matching baseline as context proxy
                 fallback = (
                     group["baseline_orig"] if context_type == "original"
                     else group.get("baseline_opp", group["baseline_orig"])
@@ -44,8 +43,6 @@ def build_grpo_hf_dataset(grpo_path: str, tokenizer) -> tuple[Dataset, list[dict
                 add_generation_prompt=True,
             )
 
-            # Embed IDX BEFORE the generation prompt end so it stays within
-            # the prompt portion and won't be cut if the context is long.
             idx = len(prompts)
             prompt_text_tagged = f"<!-- __GRPO_IDX_{idx}__ -->\n" + prompt_text
             prompts.append({"prompt": prompt_text_tagged})
@@ -73,7 +70,6 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
-    # Validate weights with informative errors instead of bare asserts
     if weights.delta < 0.5:
         raise ValueError(
             f"weights.delta={weights.delta} is too low. "
@@ -101,15 +97,18 @@ def run_grpo(
     max_completion_length = 1024
     max_prompt_length = max_seq_length - max_completion_length
 
-    grpo_config = GRPOConfig(
+    # Probe which GRPOConfig params this TRL version accepts
+    import inspect
+    grpo_src = inspect.getsource(GRPOConfig)
+    use_generation_batch_size = "generation_batch_size" in grpo_src
+    use_steps_per_generation  = "steps_per_generation"  in grpo_src
+    both_present = use_generation_batch_size and use_steps_per_generation
+
+    grpo_kwargs = dict(
         output_dir=output_dir,
         num_train_epochs=2,
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        # FIX: steps_per_generation controls gradient steps between generation rounds.
-        # Setting it equal to num_generations (4) means 4 gradient updates per round
-        # which is unusually high and slows training. Standard is 1.
-        steps_per_generation=1,
         learning_rate=learning_rate,
         warmup_ratio=0.1,
         lr_scheduler_type="cosine",
@@ -117,7 +116,7 @@ def run_grpo(
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
         temperature=0.9,
-        beta=0.2,                          # KL penalty coefficient
+        beta=0.2,
         bf16=is_bfloat16_supported(),
         fp16=not is_bfloat16_supported(),
         logging_steps=10,
@@ -130,6 +129,25 @@ def run_grpo(
         dataloader_drop_last=True,
     )
 
+    # TRL versions differ on how to set generation batch size:
+    # - Older: steps_per_generation only
+    # - Newer: generation_batch_size only (mutually exclusive with steps_per_generation)
+    # - Some: neither param exists, num_generations handles it
+    if both_present:
+        # Mutually exclusive — use generation_batch_size only
+        grpo_kwargs["generation_batch_size"] = num_generations
+        print(f"  TRL config      : generation_batch_size={num_generations}")
+    elif use_steps_per_generation:
+        grpo_kwargs["steps_per_generation"] = 1
+        print(f"  TRL config      : steps_per_generation=1")
+    elif use_generation_batch_size:
+        grpo_kwargs["generation_batch_size"] = num_generations
+        print(f"  TRL config      : generation_batch_size={num_generations}")
+    else:
+        print(f"  TRL config      : no explicit generation batch param (using defaults)")
+
+    grpo_config = GRPOConfig(**grpo_kwargs)
+
     trainer = GRPOTrainer(
         model=model,
         tokenizer=tokenizer,
@@ -138,7 +156,6 @@ def run_grpo(
         train_dataset=dataset,
     )
 
-    # Set generation constraints on the model config
     trainer.model.generation_config.max_new_tokens  = max_completion_length
     trainer.model.generation_config.min_new_tokens  = 100
     trainer.model.generation_config.do_sample       = True

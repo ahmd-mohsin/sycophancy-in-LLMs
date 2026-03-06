@@ -16,15 +16,25 @@ FACTUAL_CATEGORIES = {"math", "physics"}
 
 def _build_context_map(original_dataset_dir: str) -> dict[str, str]:
     context_map = {}
-    files = glob.glob(os.path.join(original_dataset_dir, "*_with_baselines.json"))
-    for filepath in files:
-        groups = load_sample_groups(filepath)
-        for group in groups:
-            for sample in group.pressured:
-                sid = sample.get("id") or sample.get("sample_id")
-                ctx = sample.get("components", {}).get("context", "")
-                if sid and ctx:
-                    context_map[sid] = ctx
+    # Prefer final dataset files; fall back to checkpoints.
+    # *_with_baselines.json is kept for backward compat but those files no longer exist.
+    seen_categories: set[str] = set()
+    for pattern in ("*_dataset_*.json", "*_checkpoint.json", "*_with_baselines.json"):
+        for filepath in sorted(glob.glob(os.path.join(original_dataset_dir, pattern))):
+            cat = os.path.basename(filepath).split("_")[0]
+            if cat in seen_categories:
+                continue   # already loaded a better file for this category
+            seen_categories.add(cat)
+            try:
+                groups = load_sample_groups(filepath)
+            except Exception:
+                continue
+            for group in groups:
+                for sample in group.pressured:
+                    sid = sample.get("id") or sample.get("sample_id")
+                    ctx = sample.get("components", {}).get("context", "")
+                    if sid and ctx:
+                        context_map[sid] = ctx
     return context_map
 
 

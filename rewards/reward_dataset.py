@@ -35,11 +35,18 @@ def _build_topic_category_map(dataset_dir: str) -> dict[str, str]:
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                # Handle all three formats
+                # Handle all four on-disk formats (mirrors dataset_loader._detect_format)
                 if isinstance(data, list):
                     groups = data
                 elif "groups" in data:
                     groups = data["groups"]
+                elif "samples" in data:
+                    items = data["samples"]
+                    # v2 nested format: "samples" holds group dicts with baseline_orig
+                    if items and isinstance(items[0], dict) and "baseline_orig" in items[0]:
+                        groups = items
+                    else:
+                        groups = []   # flat pressured-sample list — no topic-level groups
                 else:
                     groups = []
                 for g in groups:

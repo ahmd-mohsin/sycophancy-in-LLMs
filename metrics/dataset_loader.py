@@ -29,13 +29,23 @@ from metrics.sycophancy_metrics import SampleGroup
 # ── Format detection ──────────────────────────────────────────────────────────
 
 def _detect_format(data) -> str:
-    """Return 'checkpoint', 'groups', or 'flat_samples'."""
+    """Return 'checkpoint', 'groups', 'nested_samples', or 'flat_samples'.
+
+    'nested_samples' is the v2 dataset format:
+        {"metadata": ..., "samples": [<group dicts with baseline_orig/baseline_opp>]}
+    Each item in "samples" is a GROUP (not a pressured sample), identifiable by the
+    presence of "baseline_orig" directly on the dict.
+    """
     if isinstance(data, list):
         return "checkpoint"
     if isinstance(data, dict):
         if "groups" in data:
             return "groups"
         if "samples" in data:
+            items = data["samples"]
+            # v2 format: "samples" holds group dicts that carry baseline_orig/baseline_opp
+            if items and isinstance(items[0], dict) and "baseline_orig" in items[0]:
+                return "nested_samples"
             return "flat_samples"
     return "unknown"
 
@@ -197,6 +207,11 @@ def load_sample_groups(
 
     if fmt == "groups":
         return _load_groups_format(data["groups"], category_filter)
+
+    if fmt == "nested_samples":
+        # v2 format: {"metadata": ..., "samples": [<group dicts>]}
+        # The group dicts have the same structure as checkpoint groups.
+        return _load_checkpoint_format(data["samples"], category_filter)
 
     if fmt == "flat_samples":
         return _load_flat_samples_format(data["samples"], category_filter)

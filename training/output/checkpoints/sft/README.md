@@ -1,9 +1,9 @@
 ---
-base_model: unsloth/llama-3.1-8b-instruct
+base_model: unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
 library_name: peft
 model_name: sft
 tags:
-- base_model:adapter:unsloth/llama-3.1-8b-instruct
+- base_model:adapter:unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
 - lora
 - sft
 - transformers
@@ -15,7 +15,7 @@ pipeline_tag: text-generation
 
 # Model Card for sft
 
-This model is a fine-tuned version of [unsloth/llama-3.1-8b-instruct](https://huggingface.co/unsloth/llama-3.1-8b-instruct).
+This model is a fine-tuned version of [unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit](https://huggingface.co/unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit).
 It has been trained using [TRL](https://github.com/huggingface/trl).
 
 ## Quick start
