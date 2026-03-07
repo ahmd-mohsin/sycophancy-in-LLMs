@@ -2054,13 +2054,19 @@
   "clean_up_tokenization_spaces": true,
   "eos_token": "<|eot_id|>",
   "extra_special_tokens": {},
+  "max_length": 1024,
   "model_input_names": [
     "input_ids",
     "attention_mask"
   ],
   "model_max_length": 131072,
+  "pad_to_multiple_of": null,
   "pad_token": "<|finetune_right_pad_id|>",
+  "pad_token_type_id": 0,
   "padding_side": "left",
+  "stride": 0,
   "tokenizer_class": "PreTrainedTokenizerFast",
+  "truncation_side": "right",
+  "truncation_strategy": "longest_first",
   "unk_token": null
 }

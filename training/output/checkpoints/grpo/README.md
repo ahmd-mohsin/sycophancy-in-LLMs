@@ -1,13 +1,16 @@
 ---
 base_model: unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
-library_name: transformers
+library_name: peft
 model_name: grpo
 tags:
-- generated_from_trainer
+- base_model:adapter:unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit
+- grpo
+- lora
+- transformers
 - trl
 - unsloth
-- grpo
 licence: license
+pipeline_tag: text-generation
 ---
 
 # Model Card for grpo
@@ -35,6 +38,7 @@ This model was trained with GRPO, a method introduced in [DeepSeekMath: Pushing 
 
 ### Framework versions
 
+- PEFT 0.18.1
 - TRL: 0.24.0
 - Transformers: 4.57.6
 - Pytorch: 2.11.0.dev20260212+cu128
