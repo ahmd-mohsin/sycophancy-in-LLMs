@@ -10,6 +10,55 @@ from rewards.grpo_data_builder import build_grpo_prompt
 
 
 # ---------------------------------------------------------------------------
+# Per-sample NLI scoring (for scatter + reward KDE export)
+# ---------------------------------------------------------------------------
+
+def collect_per_sample_scores(evaluated_groups) -> list[dict]:
+    """
+    Compute per-sample NLI metrics after all responses have been generated.
+    Uses the batch NLI scorer so it runs efficiently in one GPU pass.
+
+    Returns a list of dicts (one per pressured sample) with:
+        pressure_level  — "low" / "medium" / "high"
+        context_type    — "original" / "opposite"
+        shift_orig      — semantic_shift(baseline_orig, response)  [0,1]
+        shift_opp       — semantic_shift(baseline_opp,  response)  [0,1]
+        reward          — pressure_shift + context_entailment       [0,2]
+    """
+    from metrics.nli import semantic_shifts_batch, entailment_scores_batch
+
+    pairs_orig, pairs_opp, pairs_ctx, meta = [], [], [], []
+
+    for group in evaluated_groups:
+        for sample in group.pressured:
+            resp = sample.get("response", "")
+            pairs_orig.append((group.baseline_orig, resp))
+            pairs_opp.append((group.baseline_opp,  resp))
+            pairs_ctx.append((sample["components"]["context"], resp))
+            meta.append({
+                "pressure_level": sample["pressure_level"],
+                "context_type":   sample["context_type"],
+            })
+
+    print(f"  Batch-scoring {len(meta)} samples for per-sample export...")
+    shifts_orig = semantic_shifts_batch(pairs_orig)
+    shifts_opp  = semantic_shifts_batch(pairs_opp)
+    entails_ctx = entailment_scores_batch(pairs_ctx)
+
+    per_sample = []
+    for i, m in enumerate(meta):
+        pressure_shift = shifts_orig[i] if m["context_type"] == "original" else shifts_opp[i]
+        per_sample.append({
+            "pressure_level": m["pressure_level"],
+            "context_type":   m["context_type"],
+            "shift_orig":     shifts_orig[i],
+            "shift_opp":      shifts_opp[i],
+            "reward":         pressure_shift + entails_ctx[i],
+        })
+    return per_sample
+
+
+# ---------------------------------------------------------------------------
 # Response generation
 # ---------------------------------------------------------------------------
 
@@ -204,6 +253,12 @@ if __name__ == "__main__":
              "Looks for files matching *<split>*.json first, "
              "then falls back to *_checkpoint.json.",
     )
+    parser.add_argument(
+        "--save-per-sample",
+        action="store_true",
+        help="Compute and save per-sample NLI scores (shift_orig, shift_opp, "
+             "reward) for scatter and reward-KDE export via export_to_mat.py.",
+    )
     args = parser.parse_args()
 
     # ------------------------------------------------------------------
@@ -299,37 +354,43 @@ if __name__ == "__main__":
 
     os.makedirs(args.results_dir, exist_ok=True)
 
-    metric_results = []
+    metric_results   = []
+    evaluated_groups = []   # kept only when --save-per-sample is set
     for i, group in enumerate(eval_groups):
         evaluated_group = _evaluate_group(
             model, tokenizer, group, max_new_tokens=256
         )
         result = compute_all(evaluated_group)
         metric_results.append(result)
+        if args.save_per_sample:
+            evaluated_groups.append(evaluated_group)
         if (i + 1) % 10 == 0:
             print(f"  {i+1}/{len(eval_groups)} groups done")
 
     aggregated = aggregate_metrics(metric_results)
     _print_metrics(aggregated, args.phase)
 
+    output_dict = {
+        "phase": args.phase,
+        "model": args.model,
+        "split": args.split,
+        "n_groups": len(eval_groups),
+        "dataset_files": dataset_files,
+        "evaluated_at": datetime.now().isoformat(),
+        "metrics": aggregated,
+    }
+
+    if args.save_per_sample:
+        print("\nCollecting per-sample scores for scatter/KDE export...")
+        output_dict["per_sample"] = collect_per_sample_scores(evaluated_groups)
+        print(f"  Saved {len(output_dict['per_sample'])} per-sample records.")
+
     out_path = os.path.join(
         args.results_dir,
         f"eval_{args.phase}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
     )
     with open(out_path, "w") as f:
-        json.dump(
-            {
-                "phase": args.phase,
-                "model": args.model,
-                "split": args.split,
-                "n_groups": len(eval_groups),
-                "dataset_files": dataset_files,
-                "evaluated_at": datetime.now().isoformat(),
-                "metrics": aggregated,
-            },
-            f,
-            indent=2,
-        )
+        json.dump(output_dict, f, indent=2)
     print(f"Results saved → {out_path}")
 
     # ------------------------------------------------------------------
