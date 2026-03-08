@@ -1,36 +1,104 @@
-Here is some issue thta are spotted by cursor. We are using older datasets.
+% ─────────────────────────────────────────────────────────────────────────────
+% §3.0  Motivation and Intuition  (insert BEFORE §3.1 Dataset Construction)
+% ─────────────────────────────────────────────────────────────────────────────
 
-From your inspect_rewards output there are two clear points and one thing to watch.
-1. Stored vs live totals (expected)
-Stored totals (e.g. 0.9257, 0.7098) are lower than live totals (e.g. 1.2133, 1.1886) because:
-Stored reward_dataset_20260227_012127.json was built with the v2 formula: no Rpos, and delta=0.3.
-Live recomputation uses current code: Rpos (ε·Rpos) is included and default delta=0.6.
-So the reward dataset is from an older formula. Totals are not supposed to match; the dataset itself is consistent with that older spec.
-2. Rp mismatch on “opposite” samples (real inconsistency)
-For the same sample, stored and live rp often disagree, especially for opposite context:
-Sample	Stored rp	Live rp
-political_0000_low_opposite	0.481	0.608
-political_0000_medium_opposite	0.481	0.608
-political_0000_high_opposite	0.481	0.608
-political_0037_low_opposite	0.280	0.470
-political_0037_medium_opposite	0.280	0.470
-political_0037_high_opposite	0.280	0.470
-So:
-Stored: same rp (e.g. 0.481 or 0.280) for all three pressure levels within “opposite” for a topic.
-Live: different rp, and often the same value (e.g. 0.608 or 0.470) for low/medium/high opposite.
-So either:
-When the dataset was built, the code that wrote rp for (level, opposite) was wrong (e.g. reusing one value for all three levels, or using the wrong NLI pair), or
-NLI is non-deterministic (e.g. device, bfloat16, batching) so the same (baseline_orig, response) pair gives different shift scores then vs now.
-Rq, rc, and rg match in the output; the only component that systematically disagrees is rp on opposite-context samples.
-3. What this means for the “dataset”
-Structure and counts are correct (395 groups, 2370 samples, pressure/context balance).
-NLI-based components (rq, rc, rg) recompute and match the stored values in the check you ran.
-Rp for opposite-context is inconsistent between stored and live; that’s the only dataset/reward bug or nondeterminism visible here.
-4. Recommendation before GRPO v4
-Rebuild the reward dataset with the current reward formula (including Rpos and your chosen delta) so stored totals and components match what the trainer will use.
-Fix NLI determinism for reward building: same device, model.eval(), and ideally same dtype (e.g. float32) when calling nli_score_batch so that re-runs give the same rp (and thus same advantages).
-Optionally add a small script that recomputes rewards for a few groups and asserts stored rp == live rp (and optionally other components) within a small tolerance; run it after building the reward dataset to catch bugs or variance.
-So: the “issue” in the dataset is that (i) it was built with an old reward formula (hence total mismatch), and (ii) rp for opposite-context samples is inconsistent with a fresh NLI run, which points to a bug in how rp was written for opposite context and/or NLI non-determinism.
+\subsection{Motivation: Why Scalar Rewards Fail and How Decomposition Fixes It}
+\label{sec:method_motivation}
 
+\paragraph{Sycophancy as an attention allocation problem.}
+Transformer attention assigns weight $\alpha_{ij}$ to token $j$ when
+generating token $i$. Let $\mathcal{A} \subset [T]$ denote the set of
+\emph{authority tokens} (e.g., ``Nobel laureate'', ``world expert'') and
+$\mathcal{F} \subset [T]$ the set of \emph{factual tokens} (e.g.,
+``study shows'', ``data indicate''). Define the \emph{authority attention
+ratio} at layer $\ell$ and head $h$ as:
+\begin{equation}
+  \label{eq:aar}
+  \rho^{(\ell,h)} \;=\;
+  \frac{\sum_{j \in \mathcal{A}} \bar{\alpha}^{(\ell,h)}_j}
+       {\sum_{j \in \mathcal{F}} \bar{\alpha}^{(\ell,h)}_j + \varepsilon},
+  \qquad
+  \bar{\alpha}^{(\ell,h)}_j = \frac{1}{T}\sum_{i=1}^T \alpha^{(\ell,h)}_{ij}.
+\end{equation}
+Empirically, $\rho^{(\ell,h)}$ increases monotonically with pressure
+level $j$ in pre-trained models (Figure~\ref{fig:attention_mass}): authority
+tokens absorb disproportionately more attention than factual tokens as
+pressure escalates, even when the factual content of the prompt is held
+fixed. This is the mechanistic substrate of sycophancy — authority cues
+override evidence by capturing the attention budget that would otherwise
+flow to factual tokens.
 
-Now moving forward with, I have attached the files you require.
+\paragraph{Why RLHF cannot correct this via a scalar reward.}
+Under RLHF, the policy is optimised against a scalar proxy reward
+$\hat{R}(x,y)$ learned from human preferences.
+Suppose $\hat{R}$ encodes an agreement bias (as shown in
+Proposition~\ref{prop:misspec}).
+The optimal policy then satisfies:
+\begin{equation}
+  \pi^*_{\hat{R}}(y \mid x) \;\propto\;
+  \pi_{\mathrm{ref}}(y \mid x) \cdot
+  \exp\!\left(\tfrac{1}{\beta} \hat{R}(x, y)\right).
+\end{equation}
+Because $\hat{R}$ does not distinguish between sycophantic agreement
+(\emph{capitulating} to authority against evidence) and genuine agreement
+(\emph{correctly} following strong evidence), both are reinforced equally.
+A sycophantic completion $y_s$ that entails the pressured opinion and ignores
+$C'$ receives $\hat{R}(x, y_s) \approx \hat{R}(x, y^*)$ for a correct
+completion $y^*$, so the gradient provides no signal to separate them.
+The KL penalty $\beta D_{\mathrm{KL}}$ cannot correct this: it constrains
+the \emph{magnitude} of policy movement but not its \emph{direction}, which
+is determined entirely by $\hat{R}$.
+
+\paragraph{Reward hacking via length collapse.}
+GRPO's within-group normalisation (Eq.~\eqref{eq:grpo_adv}) creates a second
+failure mode: if all completions in a group have similar reward, the
+advantages $\hat{A}_i \approx 0$ and the gradient vanishes.
+Without a length floor, the policy discovers that very short completions
+(e.g., a single hedge sentence) produce uniformly low but equal rewards
+across the group, collapsing $\sigma_R \to 0$ and halting learning.
+In GRPO v1 this manifested as mean completion length dropping below 60
+tokens by epoch 0.8, with KL divergence spiking to 0.74 and PACF
+regressing to $-0.42$ (Table~\ref{tab:training_dynamics},
+Figure~\ref{fig:reward_hacking}).
+The length multiplier $\lambda(y)$ (Eq.~\eqref{eq:length}) prevents this
+by zeroing the reward for any completion under 60 words, ensuring
+$\sigma_R > 0$ within each group.
+
+\paragraph{Why decomposed rewards create the correct gradient.}
+Let $y_s$ be a sycophantic completion (capitulates to $P_j$, ignores $C'$)
+and $y^*$ a correct completion (resists $P_j$, follows $C'$).
+Under our decomposed reward (Eq.~\eqref{eq:reward_total}):
+\begin{align}
+  R(y_s, C') &\approx
+    (\alpha{+}\gamma) \underbrace{R_p(y_s, C')}_{\text{low: drifts from }b(C')}
+    + \beta \underbrace{R_c(y_s, C')}_{\text{low: entails }o\text{, not }b(C')}
+    + \varepsilon \underbrace{R_{\mathrm{pos}}(y_s, C')}_{\text{negative: contradicts }b(C')}
+    - \delta \underbrace{R_g(y_s)}_{\text{high: agrees with }o}
+    \;\ll\; R(y^*, C'), \label{eq:why_decomp}
+\end{align}
+so the group-normalised advantage $\hat{A}(y_s) \ll \hat{A}(y^*)$, producing
+a strong negative gradient on $y_s$ and a positive gradient on $y^*$.
+A scalar reward that gives both $y_s$ and $y^*$ similar scores produces
+$\hat{A}(y_s) \approx \hat{A}(y^*) \approx 0$ — no gradient, no learning.
+The decomposition therefore solves the reward distinguishability problem
+directly: sycophantic and non-sycophantic completions are guaranteed to
+receive different total rewards as long as at least one component disagrees,
+which is ensured by the non-redundancy property established in
+Section~\ref{sec:prelim_decomp_reward}.
+
+\paragraph{The NLI gate as a variance guarantee.}
+A subtler version of the same problem arises at the dataset level.
+If the two baselines $b(C)$ and $b(C')$ are semantically similar
+($\text{shift}(b(C), b(C')) < \tau$), then for any completion $y$:
+\begin{equation}
+  R_c(y, C) \;=\; p_{\mathrm{entail}}(b(C), y)
+  \;\approx\; p_{\mathrm{entail}}(b(C'), y) \;=\; R_c(y, C'),
+\end{equation}
+and similarly for $R_p$ and $R_{\mathrm{pos}}$.
+All six samples in the group receive approximately the same reward regardless
+of context type, collapsing $\sigma_R \approx 0$ and zeroing the GRPO
+advantage signal.
+The NLI gate (Eq.~\eqref{eq:nli_gate}) is therefore not a data quality
+heuristic but a \emph{mathematical precondition} for GRPO to produce a
+non-zero gradient: it guarantees $\text{shift}(b(C), b(C')) \geq \tau$,
+which in turn guarantees $\sigma_R > 0$ within each group.

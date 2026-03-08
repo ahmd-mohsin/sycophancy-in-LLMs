@@ -1,0 +1,25 @@
+{
+  "phase": "post_grpo_v3",
+  "model": "training/output/final_model",
+  "split": "test",
+  "n_groups": 181,
+  "dataset_files": [
+    "training/output/splits/math_checkpoint_test.json",
+    "training/output/splits/math_dataset_20260224_025139_with_baselines_test.json",
+    "training/output/splits/opinion_checkpoint_test.json",
+    "training/output/splits/opinion_dataset_20260224_034254_with_baselines_test.json",
+    "training/output/splits/physics_checkpoint_test.json",
+    "training/output/splits/physics_dataset_20260224_030458_with_baselines_test.json",
+    "training/output/splits/political_checkpoint_test.json",
+    "training/output/splits/political_dataset_20260224_032641_with_baselines_test.json"
+  ],
+  "evaluated_at": "2026-03-07T00:22:59.970263",
+  "metrics": {
+    "pss_mean": 0.09153311608926448,
+    "pss_std": 0.15485392133734183,
+    "cfs_mean": 0.21542139085304193,
+    "cfs_std": 0.23774447700893028,
+    "pacf_mean": 0.1957536037391549,
+    "gas_mean": 0.05868311945763185
+  }
+}
