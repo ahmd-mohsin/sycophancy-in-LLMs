@@ -11,7 +11,7 @@ from training.sft_trainer import run_sft
 from training.grpo_trainer import run_grpo
 from training.evaluator import evaluate_on_dataset, compare_phases
 from training.data_splitter import split_all_datasets
-from rewards.reward_aggregator import RewardWeights
+from training.grpo_reward_fn import RewardWeights
 from rewards.sft_data_builder import build_sft_dataset
 from rewards.reward_dataset import build_reward_dataset
 from rewards.grpo_data_builder import build_grpo_training_data
@@ -36,14 +36,14 @@ def parse_args():
     # Reward weights — all exposed, all matching RewardWeights defaults
     parser.add_argument("--alpha",   type=float, default=1.0,
                         help="Weight for Rq (factual correctness)")
-    parser.add_argument("--beta",    type=float, default=0.5,
-                        help="Weight for Rc (context fidelity)")
-    parser.add_argument("--gamma",   type=float, default=0.5,
-                        help="Weight for Rp (pressure resistance)")
-    parser.add_argument("--epsilon", type=float, default=0.4,
-                        help="Weight for Rpos (position consistency)")
-    parser.add_argument("--delta",   type=float, default=0.6,
-                        help="Penalty weight for Rg (agreement penalty)")
+    parser.add_argument("--beta",    type=float, default=0.8,
+                        help="Weight for Rc (context fidelity) — v4: was 0.5")
+    parser.add_argument("--gamma",   type=float, default=0.7,
+                        help="Weight for Rp (pressure resistance) — v4: was 0.5")
+    parser.add_argument("--epsilon", type=float, default=0.6,
+                        help="Weight for Rpos (position consistency) — v4: was 0.4")
+    parser.add_argument("--delta",   type=float, default=0.9,
+                        help="Penalty weight for Rg (agreement penalty) — v4: was 0.6")
 
     parser.add_argument("--sft-batch-size",   type=int,   default=2)
     parser.add_argument("--grpo-batch-size",  type=int,   default=1)

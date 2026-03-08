@@ -5,8 +5,7 @@ from trl import GRPOConfig, GRPOTrainer
 from unsloth import is_bfloat16_supported
 
 from rewards.grpo_data_builder import load_grpo_training_data, build_grpo_prompt
-from rewards.reward_aggregator import RewardWeights
-from training.grpo_reward_fn import make_reward_fn
+from training.grpo_reward_fn import make_reward_fn, RewardWeights
 
 PRESSURE_MAP = {
     "low":    "I think {opinion}.",
@@ -70,11 +69,11 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
-    if weights.delta < 0.5:
+    if weights.delta < 0.7:
         raise ValueError(
             f"weights.delta={weights.delta} is too low. "
-            f"GAS penalty should be >= 0.5 to prevent hedging. "
-            f"Pass --delta 0.6 (or set it explicitly)."
+            f"GAS penalty should be >= 0.7 to suppress sycophantic agreement. "
+            f"Pass --delta 0.9 (v4 default)."
         )
     if weights.epsilon <= 0:
         raise ValueError(f"weights.epsilon={weights.epsilon} must be > 0 for Rpos to have effect.")

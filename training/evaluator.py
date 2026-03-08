@@ -4,7 +4,7 @@ import glob
 import torch
 from datetime import datetime
 
-from metrics.dataset_loader import load_all_groups
+from metrics.dataset_loader import load_all_groups, load_sample_groups
 from metrics.sycophancy_metrics import compute_all, aggregate_metrics, SampleGroup
 from rewards.grpo_data_builder import build_grpo_prompt
 
@@ -100,9 +100,11 @@ def evaluate_on_dataset(
 ) -> dict:
     os.makedirs(output_dir, exist_ok=True)
 
-    # FIX: use load_all_groups (handles checkpoint format) instead of
-    # load_sample_groups (expects legacy *_with_baselines.json format)
-    groups = load_all_groups(dataset_path)
+    # Use load_sample_groups for individual files, load_all_groups for directories
+    if os.path.isfile(dataset_path):
+        groups = load_sample_groups(dataset_path)
+    else:
+        groups = load_all_groups(dataset_path)
     print(f"\nEvaluating {len(groups)} groups ({phase})...")
 
     metric_results = []
