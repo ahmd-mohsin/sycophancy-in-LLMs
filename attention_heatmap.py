@@ -180,6 +180,7 @@ def load_sample_group(data_dir: str) -> dict:
             raw = json.load(fp)
         if isinstance(raw, list): groups.extend(raw)
         elif isinstance(raw, dict) and "groups" in raw: groups.extend(raw["groups"])
+        elif isinstance(raw, dict) and "samples" in raw: groups.extend(raw["samples"])
     # Pick highest NLI contradiction group
     scored = sorted(groups, key=lambda g: g.get("nli_contra", 0), reverse=True)
     return scored[0] if scored else random.choice(groups)
@@ -329,73 +330,72 @@ def main():
         print("  Consider using a prompt with 'expert', 'laureate', 'certainly' etc.")
 
     # ── Load models one at a time ─────────────────────────────────────────────
+    # NOTE: Unsloth replaces F.scaled_dot_product_attention with a Triton fused
+    # kernel that bypasses Python-level patches AND asserts output_attentions=False.
+    # We load with plain HuggingFace AutoModelForCausalLM + PeftModel which fully
+    # supports output_attentions=True.
     import gc
-    from unsloth import FastLanguageModel
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from peft import PeftModel
+
+    bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
+
+    def load_hf_model(model_path: str, base_model_id: str = None):
+        """Load with HF (not Unsloth) so output_attentions=True works."""
+        is_adapter = os.path.isdir(model_path) and os.path.exists(
+            os.path.join(model_path, "adapter_config.json")
+        )
+        base_id = base_model_id or model_path
+        tok = AutoTokenizer.from_pretrained(base_id, trust_remote_code=True)
+        if tok.pad_token is None:
+            tok.pad_token = tok.eos_token
+        m = AutoModelForCausalLM.from_pretrained(
+            base_id,
+            quantization_config=bnb_cfg,
+            device_map={"": 0},
+            trust_remote_code=True,
+            attn_implementation="eager",
+        )
+        if is_adapter:
+            m = PeftModel.from_pretrained(m, model_path)
+            m = m.merge_and_unload()
+        m.eval()
+        return m, tok
 
     results = {}
 
     for name, model_path in [("base", args.base_model), ("tuned", args.tuned_model)]:
         print(f"\n[2] Loading {name} model: {model_path}")
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=model_path,
-            max_seq_length=args.max_seq,
-            load_in_4bit=True,
-            device_map={"": 0},
+        is_adapter = os.path.isdir(model_path) and os.path.exists(
+            os.path.join(model_path, "adapter_config.json")
         )
-        FastLanguageModel.for_inference(model)
-
-        # Verify the patch will work by checking SDPA is called
-        print(f"  Testing attention capture...")
-        try:
-            test_enc = tokenizer("hello world expert Nobel laureate study research",
-                                  return_tensors="pt").to(model.device)
-            with torch.no_grad(), capture_attentions() as test_list:
-                _ = model(**test_enc)
-            print(f"  Captured {len(test_list)} attention tensors "
-                  f"(expected ~{model.config.num_hidden_layers})")
-            if len(test_list) == 0:
-                print("  ERROR: patch did not capture any attentions!")
-                print("  Trying fallback: output_attentions=True")
-                with torch.no_grad():
-                    out = model(**test_enc, output_attentions=True)
-                print(f"  output_attentions fallback: {len(out.attentions)} layers, "
-                      f"max value: {max(a.max().item() for a in out.attentions):.4f}")
-        except Exception as e:
-            print(f"  Test error: {e}")
+        model, tokenizer = load_hf_model(
+            model_path,
+            base_model_id=args.base_model if is_adapter else None,
+        )
 
         results[name] = {}
         for lvl, prompt in prompts_by_level.items():
             print(f"  Extracting attention: {lvl} pressure...")
-            try:
-                auth, fact, tokens = extract_attention_per_layer(
-                    model, tokenizer, prompt
-                )
-                results[name][lvl] = {"authority": auth, "factual": fact}
-                print(f"    auth mean={auth.mean():.5f}  "
-                      f"fact mean={fact.mean():.5f}  "
-                      f"ratio={auth.mean()/(fact.mean()+1e-9):.2f}")
-            except RuntimeError as e:
-                print(f"  RuntimeError: {e}")
-                # Fallback: use output_attentions=True directly
-                print("  Falling back to output_attentions=True...")
-                enc = tokenizer(prompt, return_tensors="pt",
-                                truncation=True, max_length=args.max_seq
-                                ).to(model.device)
-                tokens = tokenizer.convert_ids_to_tokens(enc.input_ids[0])
-                auth_m, fact_m = classify_tokens(tokens)
-                with torch.no_grad():
-                    out = model(**enc, output_attentions=True)
-                auth_arr, fact_arr = [], []
-                for layer_attn in out.attentions:
-                    w = layer_attn[0].float().mean(0).cpu().numpy()
-                    auth_arr.append((w @ auth_m).mean())
-                    fact_arr.append((w @ fact_m).mean())
-                auth = np.array(auth_arr)
-                fact = np.array(fact_arr)
-                results[name][lvl] = {"authority": auth, "factual": fact}
-                print(f"    (fallback) auth mean={auth.mean():.5f}  "
-                      f"fact mean={fact.mean():.5f}  "
-                      f"max auth: {auth.max():.5f}")
+            enc = tokenizer(prompt, return_tensors="pt",
+                            truncation=True, max_length=args.max_seq
+                            ).to(model.device)
+            tokens = tokenizer.convert_ids_to_tokens(enc.input_ids[0])
+            auth_m, fact_m = classify_tokens(tokens)
+            with torch.no_grad():
+                out = model(**enc, output_attentions=True)
+            auth_arr, fact_arr = [], []
+            for layer_attn in out.attentions:
+                w = layer_attn[0].float().mean(0).cpu().numpy()
+                auth_arr.append((w @ auth_m).mean())
+                fact_arr.append((w @ fact_m).mean())
+            auth = np.array(auth_arr)
+            fact = np.array(fact_arr)
+            results[name][lvl] = {"authority": auth, "factual": fact}
+            print(f"    auth mean={auth.mean():.5f}  "
+                  f"fact mean={fact.mean():.5f}  "
+                  f"ratio={auth.mean()/(fact.mean()+1e-9):.2f}")
 
         del model
         torch.cuda.empty_cache()
