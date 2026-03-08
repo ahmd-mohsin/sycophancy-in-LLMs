@@ -59,42 +59,99 @@ The ∅-row (baseline) is the model's response with **no social pressure**. It s
 
 ```
 sycophancy-in-LLMs/
+│
 ├── dataset_generation/
-│   ├── main.py                        # Entry point for dataset generation
-│   ├── config.py                      # Model assignments, dataset sizes
+│   ├── main.py                          # Entry point for dataset generation
+│   ├── config.py                        # Model assignments, dataset sizes
+│   ├── generate_baselines.py            # Standalone baseline regeneration
 │   ├── generators/
-│   │   ├── base_generator.py          # Core generation logic + NLI gate
+│   │   ├── base_generator.py            # Core generation logic + NLI gate
 │   │   ├── political_generator.py
 │   │   ├── opinion_generator.py
 │   │   ├── math_generator.py
-│   │   └── physics_generator.py
-│   └── output/                        # Generated JSON datasets
+│   │   ├── physics_generator.py
+│   │   └── add_baselines_v2.py          # v2 baseline addition pass
+│   ├── pressure/
+│   │   └── templates.py                 # Pressure prompt templates
+│   ├── utils/
+│   │   ├── io_utils.py                  # JSON checkpoint helpers
+│   │   └── model_client.py              # LLM API wrapper
+│   └── output/                          # Generated JSON datasets (gitignored)
 │
 ├── rewards/
-│   ├── sft_data_builder.py            # Builds SFT training records
-│   ├── reward_dataset.py              # Builds offline reward dataset (NLI scoring)
-│   ├── grpo_data_builder.py           # Builds GRPO training prompts
-│   ├── reward_aggregator.py           # Computes per-sample rewards + advantages
-│   ├── pressure_reward.py             # Rp: pressure resistance
-│   ├── context_reward.py              # Rc: context fidelity
-│   ├── position_reward.py             # Rpos: position consistency
-│   └── agreement_penalty.py          # Rg: generic agreement penalty
+│   ├── sft_data_builder.py              # Builds SFT training records
+│   ├── reward_dataset.py                # Builds offline reward dataset (NLI scoring)
+│   ├── grpo_data_builder.py             # Builds GRPO training prompts + context map
+│   ├── reward_aggregator.py             # Computes per-sample rewards + advantages
+│   ├── pressure_reward.py               # Rp: pressure resistance
+│   ├── context_reward.py                # Rc: context fidelity
+│   ├── position_reward.py               # Rpos: position consistency
+│   ├── agreement_penalty.py             # Rg: generic agreement penalty
+│   └── quality_reward.py                # Rq: response quality reward
 │
 ├── training/
-│   ├── train.py                       # Main training entry point
-│   ├── grpo_trainer.py                # GRPO trainer setup + dataset building
-│   ├── grpo_reward_fn.py              # Live reward function called by GRPOTrainer
-│   ├── sft_trainer.py                 # SFT trainer setup
-│   ├── model_loader.py                # Model + LoRA loading (Unsloth)
-│   ├── data_splitter.py               # Train/val/test split by topic
-│   └── evaluator.py                   # Metric evaluation
+│   ├── train.py                         # Main training entry point
+│   ├── grpo_trainer.py                  # GRPO trainer setup + dataset building
+│   ├── grpo_reward_fn.py                # Live reward function called by GRPOTrainer
+│   ├── sft_trainer.py                   # SFT trainer setup
+│   ├── model_loader.py                  # Model + LoRA loading (Unsloth)
+│   ├── data_splitter.py                 # Train/val/test split by topic
+│   ├── evaluator.py                     # Post-training metric evaluation
+│   ├── inspect_datasets.py              # Dataset inspection utilities
+│   ├── inspect_rewards.py               # Reward distribution inspection
+│   └── module2/                         # Early sycophancy detection module (archived)
+│       ├── module2_main.py
+│       ├── chain_of_verification.py
+│       ├── factual_verifier.py
+│       ├── subjective_verifier.py
+│       ├── opinion_shift_detector.py
+│       ├── vote_aggregator.py
+│       ├── conversation_summarizer.py
+│       ├── prompts/
+│       │   ├── factual_reasoning.py
+│       │   ├── subjective_reasoning.py
+│       │   └── time_sensitive_reasoning.py
+│       ├── eval/
+│       │   ├── eval_module2.py
+│       │   └── eval_multimodel.py
+│       └── tests/
+│           ├── test_factual_verifier.py
+│           ├── test_subjective_verifier.py
+│           ├── test_time_sensitive_verifier.py
+│           ├── test_vote_aggregator.py
+│           └── test_integration.py
 │
 ├── metrics/
-│   ├── nli.py                         # DeBERTa-v3 NLI scoring (entailment/contradiction)
-│   ├── sycophancy_metrics.py          # PSS, CFS, PACF, GAS computation
-│   └── dataset_loader.py              # Unified dataset loading helpers
+│   ├── nli.py                           # DeBERTa-v3 NLI scoring
+│   ├── sycophancy_metrics.py            # PSS, CFS, PACF, GAS computation
+│   ├── dataset_loader.py                # Unified dataset loading (all formats)
+│   ├── answer_extractor.py              # Extracts answers from responses
+│   ├── baseline_validator.py            # Validates baseline quality
+│   └── evaluator.py                     # Metric evaluation helpers
 │
-└── inspect_dataset.py                 # Dataset analysis and quality verification
+├── module1/                             # Early sycophancy detection module (archived)
+│   ├── module1_main.py
+│   ├── bias_detector.py
+│   ├── claim_extractor.py
+│   ├── context_extractor.py
+│   ├── question_classifier.py
+│   ├── pressure_taxonomy.py
+│   ├── llm_wrapper.py
+│   ├── eval/
+│   │   ├── eval_module1.py
+│   │   ├── eval_self_curated.py
+│   │   └── print_results.py
+│   └── eval_sycon_bench.py
+│
+├── figures/                             # Output figures (gitignored)
+│
+├── inspect_dataset.py                   # Dataset analysis + quality verification
+├── sycophancy_viz.py                    # Full visualization pipeline (all figures)
+├── qualitative_responses.py             # Qualitative response comparison across stages
+├── attention_heatmap.py                 # Attention mass figure (base vs GRPO)
+├── extract_results.py                   # Extract + summarize eval results
+├── sample.py                            # Quick sampling / smoke-test script
+└── README.md
 ```
 
 ---
