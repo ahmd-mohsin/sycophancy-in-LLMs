@@ -1,0 +1,12 @@
+{
+  "train_loss": 0.0015490789221494204,
+  "train_runtime": 169429.7372,
+  "n_groups": 771,
+  "weights": {
+    "alpha": 1.0,
+    "beta": 0.8,
+    "gamma": 0.7,
+    "epsilon": 0.6,
+    "delta": 0.9
+  }
+}

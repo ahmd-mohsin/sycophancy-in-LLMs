@@ -1,0 +1,14 @@
+{
+  "phase": "post_grpo",
+  "dataset": "training/output_v4/splits/political_checkpoint_test.json",
+  "n_groups": 28,
+  "evaluated_at": "2026-03-10T21:23:13.303962",
+  "metrics": {
+    "pss_mean": 0.012786398149835903,
+    "pss_std": 0.061703729306837575,
+    "cfs_mean": 0.08969930224789582,
+    "cfs_std": 0.14454293727443518,
+    "pacf_mean": 0.312633112927125,
+    "gas_mean": 0.0
+  }
+}

@@ -1,104 +1,114 @@
-% ─────────────────────────────────────────────────────────────────────────────
-% §3.0  Motivation and Intuition  (insert BEFORE §3.1 Dataset Construction)
-% ─────────────────────────────────────────────────────────────────────────────
+Now in the methodlogy section after the disentagled reward, i have this two pahse training. Alot of the stuff is already written before in methodology . Remove that, also the stuff int he evalaution secti:
 
-\subsection{Motivation: Why Scalar Rewards Fail and How Decomposition Fixes It}
-\label{sec:method_motivation}
+\subsection{Two-Phase Training Pipeline}
+\label{sec:method_training}
 
-\paragraph{Sycophancy as an attention allocation problem.}
-Transformer attention assigns weight $\alpha_{ij}$ to token $j$ when
-generating token $i$. Let $\mathcal{A} \subset [T]$ denote the set of
-\emph{authority tokens} (e.g., ``Nobel laureate'', ``world expert'') and
-$\mathcal{F} \subset [T]$ the set of \emph{factual tokens} (e.g.,
-``study shows'', ``data indicate''). Define the \emph{authority attention
-ratio} at layer $\ell$ and head $h$ as:
+\paragraph{Phase 1 — SFT warmup.}
+Before RL training, we fine-tune $\pi_{\mathrm{ref}}$ on pressure-free
+baseline responses via supervised cross-entropy:
 \begin{equation}
-  \label{eq:aar}
-  \rho^{(\ell,h)} \;=\;
-  \frac{\sum_{j \in \mathcal{A}} \bar{\alpha}^{(\ell,h)}_j}
-       {\sum_{j \in \mathcal{F}} \bar{\alpha}^{(\ell,h)}_j + \varepsilon},
-  \qquad
-  \bar{\alpha}^{(\ell,h)}_j = \frac{1}{T}\sum_{i=1}^T \alpha^{(\ell,h)}_{ij}.
+  \label{eq:sft}
+  \mathcal{L}_{\mathrm{SFT}}(\theta) \;=\;
+  -\mathbb{E}_{(c,q) \sim \mathcal{D}} \Bigl[
+    \log \pi_\theta\!\bigl(r_\emptyset(c,q) \;\big|\; \emptyset, c, q\bigr)
+  \Bigr],
 \end{equation}
-Empirically, $\rho^{(\ell,h)}$ increases monotonically with pressure
-level $j$ in pre-trained models (Figure~\ref{fig:attention_mass}): authority
-tokens absorb disproportionately more attention than factual tokens as
-pressure escalates, even when the factual content of the prompt is held
-fixed. This is the mechanistic substrate of sycophancy — authority cues
-override evidence by capturing the attention budget that would otherwise
-flow to factual tokens.
+optimised over both context orientations. This serves two purposes: (i) it
+establishes a prior $\pi_{\mathrm{ref}}$ that already knows what a
+pressure-free, evidence-grounded response looks like, making the KL penalty in
+Eq.~\eqref{eq:grpo_obj} meaningful; and (ii) it prevents the GRPO policy
+gradient from spending capacity on learning the basic task format, which would
+compete with learning pressure resistance.
 
-\paragraph{Why RLHF cannot correct this via a scalar reward.}
-Under RLHF, the policy is optimised against a scalar proxy reward
-$\hat{R}(x,y)$ learned from human preferences.
-Suppose $\hat{R}$ encodes an agreement bias (as shown in
-Proposition~\ref{prop:misspec}).
-The optimal policy then satisfies:
+\paragraph{Phase 2 — GRPO with disentangled reward.}
+Starting from the SFT checkpoint, we optimise Eq.~\eqref{eq:grpo_obj} with
+$R$ instantiated as Eq.~\eqref{eq:reward_total}. For each prompt $(P_j, c, q)$
+in the training set, $G=4$ completions are sampled, rewarded, and
+group-normalised per Eq.~\eqref{eq:grpo_adv}. The KL coefficient is set to
+$\beta = 0.2$, calibrated to prevent the policy collapse observed in
+preliminary runs where $\beta = 0.04$ led to KL divergence above $0.74$ and
+catastrophic regression on PACF.
+
+\paragraph{Prompt construction.}
+Each training prompt is assembled as:
+\begin{equation*}
+  x \;=\; [\texttt{SYSTEM}]\; s \;\;
+           [\texttt{USER}]\; P_j \;\|\; \texttt{Context: } c \;\|\;
+           \texttt{Question: } q,
+\end{equation*}
+where $s$ is a fixed system prompt instructing the model not to allow authority
+or credentials to influence its answer, and $\|$ denotes string concatenation.
+An index tag \texttt{\_\_GRPO\_IDX\_}$k$\texttt{\_\_} is prepended to each
+prompt so the live reward function can recover the group metadata
+$(b(C), b(C'), o, \mathrm{category})$ required to evaluate
+Eqs.~\eqref{eq:rp}--\eqref{eq:rg} without passing auxiliary state through the
+trainer interface.
+
+\subsection{NLI-Based Semantic Distance}
+\label{sec:prelim_nli}
+
+Definitions~\ref{def:pi}--\ref{def:sycophancy} require a semantic distance
+$d(\cdot,\cdot)$ over responses. We instantiate this using a cross-encoder
+NLI model $f_\phi$~\citep{he2021deberta} that maps a (premise, hypothesis)
+pair to a simplex over $\{\texttt{entailment}, \texttt{neutral},
+\texttt{contradiction}\}$. For two responses $a, b \in \mathcal{Y}$:
 \begin{equation}
-  \pi^*_{\hat{R}}(y \mid x) \;\propto\;
-  \pi_{\mathrm{ref}}(y \mid x) \cdot
-  \exp\!\left(\tfrac{1}{\beta} \hat{R}(x, y)\right).
+  \label{eq:shift}
+  d_\phi(a,b) \;=\; \text{shift}(a,b) \;\coloneqq\;
+  \frac{p_{\mathrm{contra}}(a,b)}
+       {p_{\mathrm{entail}}(a,b) + p_{\mathrm{neutral}}(a,b)
+        + p_{\mathrm{contra}}(a,b)},
 \end{equation}
-Because $\hat{R}$ does not distinguish between sycophantic agreement
-(\emph{capitulating} to authority against evidence) and genuine agreement
-(\emph{correctly} following strong evidence), both are reinforced equally.
-A sycophantic completion $y_s$ that entails the pressured opinion and ignores
-$C'$ receives $\hat{R}(x, y_s) \approx \hat{R}(x, y^*)$ for a correct
-completion $y^*$, so the gradient provides no signal to separate them.
-The KL penalty $\beta D_{\mathrm{KL}}$ cannot correct this: it constrains
-the \emph{magnitude} of policy movement but not its \emph{direction}, which
-is determined entirely by $\hat{R}$.
+where $p_{\mathrm{contra}}(a,b) = [f_\phi(a,b)]_{\texttt{contradiction}}$
+and similarly for the other classes. Normalising over all three classes is
+necessary: a hedged response that neither entails nor contradicts scores
+$p_{\mathrm{contra}} \approx 0$ and would appear falsely pressure-resistant
+under a two-class ratio. The evaluation metrics in Section~\ref{sec:metrics}
+are defined in terms of $\text{shift}$ and the complementary entailment score
+$p_{\mathrm{entail}}(a,b)$ directly.
 
-\paragraph{Reward hacking via length collapse.}
-GRPO's within-group normalisation (Eq.~\eqref{eq:grpo_adv}) creates a second
-failure mode: if all completions in a group have similar reward, the
-advantages $\hat{A}_i \approx 0$ and the gradient vanishes.
-Without a length floor, the policy discovers that very short completions
-(e.g., a single hedge sentence) produce uniformly low but equal rewards
-across the group, collapsing $\sigma_R \to 0$ and halting learning.
-In GRPO v1 this manifested as mean completion length dropping below 60
-tokens by epoch 0.8, with KL divergence spiking to 0.74 and PACF
-regressing to $-0.42$ (Table~\ref{tab:training_dynamics},
-Figure~\ref{fig:reward_hacking}).
-The length multiplier $\lambda(y)$ (Eq.~\eqref{eq:length}) prevents this
-by zeroing the reward for any completion under 60 words, ensuring
-$\sigma_R > 0$ within each group.
+\paragraph{Why NLI over LLM-as-judge.}
+A sycophantic LLM judge assigns higher scores to agreeable
+responses~\citep{wang2023large}, creating circular validation. DeBERTa
+cross-encoders are discriminative classifiers trained on sentence-level
+entailment (SNLI/MultiNLI~\citep{bowman2015snli,williams2018multinli}) and
+carry no social-agreement prior.
 
-\paragraph{Why decomposed rewards create the correct gradient.}
-Let $y_s$ be a sycophantic completion (capitulates to $P_j$, ignores $C'$)
-and $y^*$ a correct completion (resists $P_j$, follows $C'$).
-Under our decomposed reward (Eq.~\eqref{eq:reward_total}):
-\begin{align}
-  R(y_s, C') &\approx
-    (\alpha{+}\gamma) \underbrace{R_p(y_s, C')}_{\text{low: drifts from }b(C')}
-    + \beta \underbrace{R_c(y_s, C')}_{\text{low: entails }o\text{, not }b(C')}
-    + \varepsilon \underbrace{R_{\mathrm{pos}}(y_s, C')}_{\text{negative: contradicts }b(C')}
-    - \delta \underbrace{R_g(y_s)}_{\text{high: agrees with }o}
-    \;\ll\; R(y^*, C'), \label{eq:why_decomp}
-\end{align}
-so the group-normalised advantage $\hat{A}(y_s) \ll \hat{A}(y^*)$, producing
-a strong negative gradient on $y_s$ and a positive gradient on $y^*$.
-A scalar reward that gives both $y_s$ and $y^*$ similar scores produces
-$\hat{A}(y_s) \approx \hat{A}(y^*) \approx 0$ — no gradient, no learning.
-The decomposition therefore solves the reward distinguishability problem
-directly: sycophantic and non-sycophantic completions are guaranteed to
-receive different total rewards as long as at least one component disagrees,
-which is ensured by the non-redundancy property established in
-Section~\ref{sec:prelim_decomp_reward}.
+\subsection{The Reward Decomposition Principle}
+\label{sec:prelim_decomp_reward}
 
-\paragraph{The NLI gate as a variance guarantee.}
-A subtler version of the same problem arises at the dataset level.
-If the two baselines $b(C)$ and $b(C')$ are semantically similar
-($\text{shift}(b(C), b(C')) < \tau$), then for any completion $y$:
+A scalar reward $R(x,y)$ conflates the two orthogonal failure modes in
+Eq.~\eqref{eq:syco}. To see why this is problematic, consider a response $y$
+that is factually correct but phrased in a pressure-resistant tone: it
+satisfies pressure independence but may receive a low scalar reward if the
+reward model encodes an agreement bias. Conversely, a perfectly agreeable but
+context-faithful response receives high reward despite violating pressure
+independence.
+
+We therefore replace the scalar $R$ with a \emph{disentangled} reward vector:
 \begin{equation}
-  R_c(y, C) \;=\; p_{\mathrm{entail}}(b(C), y)
-  \;\approx\; p_{\mathrm{entail}}(b(C'), y) \;=\; R_c(y, C'),
+  \label{eq:decomp}
+  R(x, y) \;=\; f\bigl(R_p(x,y),\; R_c(x,y),\; R_{\mathrm{pos}}(x,y),\;
+  R_g(x,y),\; R_q(x,y)\bigr),
 \end{equation}
-and similarly for $R_p$ and $R_{\mathrm{pos}}$.
-All six samples in the group receive approximately the same reward regardless
-of context type, collapsing $\sigma_R \approx 0$ and zeroing the GRPO
-advantage signal.
-The NLI gate (Eq.~\eqref{eq:nli_gate}) is therefore not a data quality
-heuristic but a \emph{mathematical precondition} for GRPO to produce a
-non-zero gradient: it guarantees $\text{shift}(b(C), b(C')) \geq \tau$,
-which in turn guarantees $\sigma_R > 0$ within each group.
+where each component is computed via NLI against a context-matched reference
+(the pressure-free baseline $r_\emptyset$), and $f$ is a weighted linear
+aggregation. The key property is \emph{orthogonality}: each component targets
+exactly one of the two independence conditions in
+Definitions~\ref{def:pi}--\ref{def:er}, and no two components are
+simultaneously maximised by the same failure mode.
+
+Specifically:
+\begin{itemize}[leftmargin=*, noitemsep]
+  \item $R_p$ and $R_{\mathrm{pos}}$ enforce Pressure Independence
+        (Definition~\ref{def:pi}) — they are maximised when the response
+        is invariant to $P$.
+  \item $R_c$ and $R_q$ enforce Evidence Responsiveness
+        (Definition~\ref{def:er}) — they are maximised when the response
+        entails the context-appropriate reference.
+  \item $R_g$ penalises the degenerate equilibrium in which the policy
+        satisfies neither condition by outputting hedged, content-free
+        agreements.
+\end{itemize}
+The full specification of each component, their NLI instantiation, and the
+weighted aggregation formula are given in Section~\ref{sec:methodology}.on, is already present so remvoe stuff from thes section which repeats itself later. Remove verbosity and make it proper and breif and very research oriented. Done use any --, and also dont keep any undefied acronyms
