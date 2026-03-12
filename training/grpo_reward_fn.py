@@ -1,67 +1,93 @@
 """
-GRPO Live Reward Function  —  v4
+GRPO Live Reward Function  —  v6
 
-Changes from v3:
+Root cause analysis of PSS regression (v2→v4/v5):
 ─────────────────────────────────────────────────────────────────────────────
-1. RC FIX (CFS alignment):
-   Old: compute_rc_pressured measured contradiction(completion, baseline) — rewarded DIVERGENCE.
-   New: measures entailment(baseline, completion) — rewards FAITHFULNESS.
-   This aligns Rc directly with what CFS measures.
+v2 had PSS=0.0128, GAS=0.0000.
+v4/v5 have PSS≈0.11, GAS≈0.05.
 
-2. RPOS FIX (PACF alignment):
-   Old: Rpos = 0.0 for original-context samples (half the data had zero PACF gradient).
-   New: Rpos fires for BOTH context types with context-matched baseline.
-   This doubles the PACF gradient signal across the dataset.
+The v4 RC fix (contradiction→entailment) is theoretically correct but
+creates a gradient conflict on original-context samples:
 
-3. RG FIX (GAS alignment):
-   Old: Threshold 0.6, normalized over [0.6,1.0] → weak, narrow penalty.
-   New: Threshold 0.4, full entailment magnitude → 3x stronger signal.
-   Plus amplified penalty for opposite-context capitulation (worst case).
+  baseline_orig already entails opinion o (it is the committed pro-o response).
+  RC_orig = entailment(baseline_orig, completion) rewards completions that
+  agree with o. But Rg penalises agreement with o. On original-context samples
+  RC and Rg are in direct opposition, producing noisy gradients and driving
+  GAS up.
 
-4. WEIGHT REBALANCING:
-   Old: α=1.0 β=0.5 γ=0.5 ε=0.4 δ=0.6
-   New: α=1.0 β=0.8 γ=0.7 ε=0.6 δ=0.9
-   β↑: Rc now correctly measures faithfulness, needs more weight.
-   γ↑: Rp needs more pull to counter PSS regression from assertive SFT style.
-   ε↑: Rpos now fires for both contexts, weight increase is balanced.
-   δ↑: Stronger Rg to actually move GAS.
+  On opposite-context samples this conflict does not exist: baseline_opp
+  entails ¬o, so entailment(baseline_opp, completion) rewards disagreeing
+  with o, which is consistent with Rg.
 
-5. PRESSURE-LEVEL SCALING on Rp:
-   High-pressure samples get 1.2x Rp to give stronger gradient at the hardest
-   condition, directly targeting PSS at high pressure.
+FIX (v6):
+  RC is now context-aware:
+    - Original context: RC = entailment(baseline_orig, completion)
+      BUT capped: only applied when the completion does NOT strongly entail o.
+      Concretely: RC_orig = entailment(baseline_orig, c) * (1 - entailment(o, c))
+      This rewards following the baseline style/reasoning without rewarding
+      sycophantic agreement with the pushed opinion.
+
+    - Opposite context: RC = entailment(baseline_opp, completion) [unchanged from v4]
+      No conflict here — following baseline_opp means disagreeing with o.
+
+  RPOS: reverted to opposite-context only.
+    Firing Rpos on original-context samples (v4 change) was redundant with RC
+    on original context and added noise. Opposite-context Rpos is kept — it
+    provides the clearest gradient signal for PACF.
+
+  Weights: α=1.0, β=0.8, γ=0.5, ε=0.6, δ=0.6 (same as v5).
+  Epochs: 1.
+  Pressure multiplier: removed (confirmed harmful in v4 diagnosis).
 ─────────────────────────────────────────────────────────────────────────────
 """
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from collections import defaultdict
 
 from rewards.pressure_reward import compute_rp
-from rewards.context_reward import compute_rc_pressured
 from rewards.agreement_penalty import compute_rg_single, compute_rg_opposite_context
 from rewards.position_reward import compute_rpos
-from metrics.nli import entailment_score
+from metrics.nli import entailment_score, nli_score_batch
 
 _IDX_RE = re.compile(r"__GRPO_IDX_(\d+)__")
 
 FACTUAL_CATEGORIES = {"math", "physics"}
 
-MIN_WORDS        = 60
-IDEAL_MIN_WORDS  = 120
-IDEAL_MAX_WORDS  = 200
-
-PRESSURE_LEVEL_MULTIPLIER = {
-    "low":    1.0,
-    "medium": 1.1,
-    "high":   1.2,
-}
+MIN_WORDS       = 60
+IDEAL_MIN_WORDS = 120
+IDEAL_MAX_WORDS = 200
 
 
 @dataclass
 class RewardWeights:
     alpha:   float = 1.0   # Rq: factual correctness
-    beta:    float = 0.8   # Rc: context fidelity       (was 0.5)
-    gamma:   float = 0.7   # Rp: pressure resistance    (was 0.5)
-    epsilon: float = 0.6   # Rpos: position consistency (was 0.4)
-    delta:   float = 0.9   # Rg: agreement penalty      (was 0.6)
+    beta:    float = 0.8   # Rc: context fidelity
+    gamma:   float = 0.5   # Rp: pressure resistance
+    epsilon: float = 0.6   # Rpos: position consistency (opposite context only)
+    delta:   float = 0.6   # Rg: agreement penalty
+
+
+@dataclass
+class _RewardLog:
+    counts:  dict = field(default_factory=lambda: defaultdict(int))
+    sums:    dict = field(default_factory=lambda: defaultdict(float))
+    sq_sums: dict = field(default_factory=lambda: defaultdict(float))
+
+    def record(self, components: dict):
+        for k, v in components.items():
+            if v is not None:
+                self.counts[k]  += 1
+                self.sums[k]    += v
+                self.sq_sums[k] += v * v
+
+    def stats(self) -> dict:
+        out = {}
+        for k in self.counts:
+            n    = self.counts[k]
+            mean = self.sums[k] / n if n else 0.0
+            var  = (self.sq_sums[k] / n - mean ** 2) if n > 1 else 0.0
+            out[k] = {"mean": round(mean, 4), "std": round(var ** 0.5, 4), "n": n}
+        return out
 
 
 def _length_multiplier(text: str) -> float:
@@ -74,8 +100,33 @@ def _length_multiplier(text: str) -> float:
     return 1.0 + bonus
 
 
-def _pressure_multiplier(pressure_level: str) -> float:
-    return PRESSURE_LEVEL_MULTIPLIER.get(pressure_level, 1.0)
+def _compute_rc_v6(completion: str, correct_baseline: str,
+                   opinion: str, is_opposite: bool) -> float:
+    """
+    Context-aware RC.
+
+    Opposite context: entailment(baseline_opp, completion).
+        Unambiguous — following baseline_opp means disagreeing with o.
+
+    Original context: entailment(baseline_orig, completion) dampened by
+        how much the completion agrees with the pushed opinion o.
+        RC_orig = entail(baseline_orig, c) * (1 - entail(o, c))
+        This rewards baseline-faithful responses that are NOT sycophantic.
+        A completion that perfectly follows baseline_orig while also agreeing
+        with o (sycophantic shortcut) gets dampened toward zero.
+    """
+    if not completion or not correct_baseline:
+        return 0.0
+
+    if is_opposite:
+        return float(entailment_score(correct_baseline, completion))
+
+    # Original context: compute both scores in one batch call
+    pairs = [(correct_baseline, completion), (opinion, completion)]
+    results = nli_score_batch(pairs)
+    e_baseline = float(results[0].get("entailment", 0.0))
+    e_opinion  = float(results[1].get("entailment", 0.0))
+    return e_baseline * (1.0 - e_opinion)
 
 
 def _compute_total(rq, rp, rc, rpos, rg, weights: RewardWeights,
@@ -85,14 +136,14 @@ def _compute_total(rq, rp, rc, rpos, rg, weights: RewardWeights,
         rp_term = weights.gamma * rp
     else:
         rq_term = 0.0
-        rp_term = (weights.alpha + weights.gamma) * rp   # Rq weight redistributed to Rp
+        rp_term = (weights.alpha + weights.gamma) * rp
 
     return (
         rq_term
         + weights.beta    * rc
         + rp_term
         + weights.epsilon * rpos
-        + weights.delta   * rg    # rg is negative, so this subtracts
+        + weights.delta   * rg   # rg is negative
     )
 
 
@@ -104,6 +155,8 @@ def make_reward_fn(
 ):
     if weights is None:
         weights = RewardWeights()
+
+    _log = _RewardLog()
 
     index_to_meta: list[tuple[dict, dict]] = []
     for group in grpo_groups:
@@ -128,37 +181,34 @@ def make_reward_fn(
             opinion        = group["opinion"]
             cat            = group.get("category", category)
             context_type   = meta.get("context_type", "original")
-            pressure_level = meta.get("pressure_level", "low")
             is_opposite    = (context_type == "opposite")
 
-            # Context-matched baseline used by Rp, Rc, Rpos
             correct_baseline = baseline_opp if is_opposite else baseline_orig
 
-            # ── RQ: factual quality ───────────────────────────────────────────
+            # ── RQ: factual correctness ───────────────────────────────────────
             if cat in FACTUAL_CATEGORIES:
                 rq = float(entailment_score(correct_baseline, completion))
             else:
                 rq = None
 
             # ── RP: pressure resistance ───────────────────────────────────────
-            # 1 - semantic_shift(correct_baseline, completion)
-            # Scaled by pressure level: high pressure gets 1.2x signal
-            rp_raw  = compute_rp(completion, correct_baseline)
-            rp      = rp_raw * _pressure_multiplier(pressure_level)
+            rp = compute_rp(completion, correct_baseline)
 
-            # ── RC: context fidelity ──────────────────────────────────────────
-            # v4 FIX: entailment(correct_baseline, completion)
-            # Previous version used contradiction → was anti-aligned with CFS
-            rc = compute_rc_pressured(completion, correct_baseline)
+            # ── RC: context fidelity (v6 context-aware) ───────────────────────
+            # Original: entail(baseline_orig, c) * (1 - entail(o, c))
+            #   Rewards baseline fidelity but dampens sycophantic shortcuts.
+            # Opposite: entail(baseline_opp, c) [unchanged from v4]
+            rc = _compute_rc_v6(completion, correct_baseline, opinion, is_opposite)
 
-            # ── RPOS: position consistency ────────────────────────────────────
-            # v4 FIX: fires for both context types
-            # Original: entailment(baseline_orig, completion) in [0,1]
-            # Opposite: entailment(baseline_opp, completion) - contradiction in [-1,1]
-            rpos = compute_rpos(completion, correct_baseline, is_opposite=is_opposite)
+            # ── RPOS: position consistency (opposite context only) ─────────────
+            # Reverted to opposite-only (v4's both-context firing was redundant
+            # with RC on original context and added noise to PSS gradient).
+            if is_opposite:
+                rpos = compute_rpos(completion, correct_baseline, is_opposite=True)
+            else:
+                rpos = 0.0
 
             # ── RG: generic agreement penalty ─────────────────────────────────
-            # v4 FIX: lower threshold, full magnitude, amplified for opposite ctx
             if is_opposite:
                 rg = compute_rg_opposite_context(completion, opinion)
             else:
@@ -168,8 +218,18 @@ def make_reward_fn(
             total = _compute_total(rq, rp, rc, rpos, rg, weights, cat)
             total = total * _length_multiplier(completion)
 
+            _log.record({
+                "rq":    rq,
+                "rp":    rp,
+                "rc":    rc,
+                "rpos":  rpos if is_opposite else None,
+                "rg":    rg,
+                "total": total,
+            })
+
             rewards.append(float(total))
 
         return rewards
 
+    reward_fn.get_stats = _log.stats
     return reward_fn

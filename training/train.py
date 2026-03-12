@@ -23,7 +23,7 @@ def latest_file(directory: str, pattern: str) -> str | None:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Sycophancy RL Training Pipeline")
+    parser = argparse.ArgumentParser(description="Sycophancy RL Training Pipeline  —  v5")
 
     parser.add_argument("--model", default="unsloth/llama-3.1-8b-instruct")
     parser.add_argument("--dataset-dir", default="dataset_generation/output")
@@ -33,17 +33,21 @@ def parse_args():
                         choices=["math", "physics", "political", "opinion", "all"])
     parser.add_argument("--max-seq-length", type=int, default=2048)
 
-    # Reward weights — all exposed, all matching RewardWeights defaults
+    # ── Reward weights ────────────────────────────────────────────────────────
+    # v5 changes vs v4:
+    #   gamma: 0.7 → 0.5  (reverted — strong Rp + pressure multiplier caused PSS regression)
+    #   delta: 0.9 → 0.6  (reverted — over-penalised Rg causing gradient instability)
+    #   beta, epsilon: unchanged (v4 fixes validated)
     parser.add_argument("--alpha",   type=float, default=1.0,
                         help="Weight for Rq (factual correctness)")
     parser.add_argument("--beta",    type=float, default=0.8,
-                        help="Weight for Rc (context fidelity) — v4: was 0.5")
-    parser.add_argument("--gamma",   type=float, default=0.7,
-                        help="Weight for Rp (pressure resistance) — v4: was 0.5")
+                        help="Weight for Rc (context fidelity)")
+    parser.add_argument("--gamma",   type=float, default=0.5,
+                        help="Weight for Rp (pressure resistance) — v5: reverted from 0.7")
     parser.add_argument("--epsilon", type=float, default=0.6,
-                        help="Weight for Rpos (position consistency) — v4: was 0.4")
-    parser.add_argument("--delta",   type=float, default=0.9,
-                        help="Penalty weight for Rg (agreement penalty) — v4: was 0.6")
+                        help="Weight for Rpos (position consistency)")
+    parser.add_argument("--delta",   type=float, default=0.6,
+                        help="Penalty weight for Rg (agreement penalty) — v5: reverted from 0.9")
 
     parser.add_argument("--sft-batch-size",   type=int,   default=2)
     parser.add_argument("--grpo-batch-size",  type=int,   default=1)
@@ -84,12 +88,14 @@ def main():
     )
 
     print(f"\n{'='*60}")
-    print(f"  SYCOPHANCY REDUCTION TRAINING")
+    print(f"  SYCOPHANCY REDUCTION TRAINING  —  v5")
     print(f"{'='*60}")
     print(f"  Model      : {args.model}")
     print(f"  Dataset    : {args.dataset_dir}")
     print(f"  Weights    : α={weights.alpha} β={weights.beta} γ={weights.gamma} "
           f"ε={weights.epsilon} δ={weights.delta}")
+    print(f"  Epochs     : 1")
+    print(f"  Pressure multiplier: DISABLED")
     print(f"{'='*60}\n")
 
     sft_data_path  = args.sft_data_path
@@ -172,8 +178,6 @@ def main():
             grpo_dataset_path=grpo_data_path,
             output_dir=grpo_ckpt,
             weights=weights,
-            # Pass the actual category string — grpo_reward_fn uses group["category"]
-            # per-sample so the top-level value is only used as a fallback.
             category=args.category if args.category != "all" else "opinion",
             judge_model=args.judge_model,
             max_seq_length=args.max_seq_length,
@@ -183,7 +187,7 @@ def main():
         )
         if not args.skip_eval and eval_dataset:
             print("\n── Post-GRPO Evaluation ─────────────────────────────")
-            evaluate_on_dataset(model, tokenizer, eval_dataset, results_dir, phase="post_grpo")
+            evaluate_on_dataset(model, tokenizer, eval_dataset, results_dir, phase="post_grpo_v5")
 
     print("\n── Final Comparison ─────────────────────────────────")
     comparison = compare_phases(results_dir)

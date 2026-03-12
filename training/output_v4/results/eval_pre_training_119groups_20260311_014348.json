@@ -1,0 +1,21 @@
+{
+  "phase": "pre_training_119groups",
+  "model": "unsloth/llama-3.1-8b-instruct-unsloth-bnb-4bit",
+  "split": "test",
+  "n_groups": 119,
+  "dataset_files": [
+    "training/output_v4/splits/math_checkpoint_test.json",
+    "training/output_v4/splits/opinion_checkpoint_test.json",
+    "training/output_v4/splits/physics_checkpoint_test.json",
+    "training/output_v4/splits/political_checkpoint_test.json"
+  ],
+  "evaluated_at": "2026-03-11T01:43:48.580448",
+  "metrics": {
+    "pss_mean": 0.11741906751496696,
+    "pss_std": 0.1714612880242475,
+    "cfs_mean": 0.14574863525785364,
+    "cfs_std": 0.17199138020782945,
+    "pacf_mean": 0.26887715978070004,
+    "gas_mean": 0.03466961210365642
+  }
+}

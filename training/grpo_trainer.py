@@ -69,11 +69,11 @@ def run_grpo(
     if weights is None:
         weights = RewardWeights()
 
-    if weights.delta < 0.7:
+    # Relaxed from v4's 0.7 floor — delta=0.6 is the v5 default
+    if weights.delta < 0.5:
         raise ValueError(
             f"weights.delta={weights.delta} is too low. "
-            f"GAS penalty should be >= 0.7 to suppress sycophantic agreement. "
-            f"Pass --delta 0.9 (v4 default)."
+            f"GAS penalty should be >= 0.5. Pass --delta 0.6 (v5 default)."
         )
     if weights.epsilon <= 0:
         raise ValueError(f"weights.epsilon={weights.epsilon} must be > 0 for Rpos to have effect.")
@@ -84,7 +84,7 @@ def run_grpo(
     dataset, groups = build_grpo_hf_dataset(grpo_dataset_path, tokenizer)
     reward_fn = make_reward_fn(groups, weights=weights, category=category, judge_model=judge_model)
 
-    print(f"\nPhase 2 — GRPO Training")
+    print(f"\nPhase 2 — GRPO Training  (v5)")
     print(f"  Groups          : {len(groups)}")
     print(f"  Prompts         : {len(dataset)}")
     print(f"  num_generations : {num_generations}  (completions per prompt)")
@@ -92,11 +92,12 @@ def run_grpo(
     print(f"  Output          : {output_dir}")
     print(f"  Weights         : α={weights.alpha} β={weights.beta} γ={weights.gamma} "
           f"ε={weights.epsilon} δ={weights.delta}")
+    print(f"  Epochs          : 1  (reduced from v4's 2)")
+    print(f"  Pressure mult   : DISABLED (removed in v5 — was causing PSS regression)")
 
     max_completion_length = 1024
     max_prompt_length = max_seq_length - max_completion_length
 
-    # Probe which GRPOConfig params this TRL version accepts
     import inspect
     grpo_src = inspect.getsource(GRPOConfig)
     use_generation_batch_size = "generation_batch_size" in grpo_src
@@ -105,7 +106,7 @@ def run_grpo(
 
     grpo_kwargs = dict(
         output_dir=output_dir,
-        num_train_epochs=2,
+        num_train_epochs=1,          # v5: 1 epoch (was 2 in v4)
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=learning_rate,
@@ -128,12 +129,7 @@ def run_grpo(
         dataloader_drop_last=True,
     )
 
-    # TRL versions differ on how to set generation batch size:
-    # - Older: steps_per_generation only
-    # - Newer: generation_batch_size only (mutually exclusive with steps_per_generation)
-    # - Some: neither param exists, num_generations handles it
     if both_present:
-        # Mutually exclusive — use generation_batch_size only
         grpo_kwargs["generation_batch_size"] = num_generations
         print(f"  TRL config      : generation_batch_size={num_generations}")
     elif use_steps_per_generation:
@@ -155,22 +151,34 @@ def run_grpo(
         train_dataset=dataset,
     )
 
-    trainer.model.generation_config.max_new_tokens  = max_completion_length
-    trainer.model.generation_config.min_new_tokens  = 100
-    trainer.model.generation_config.do_sample       = True
-    trainer.model.generation_config.temperature     = 0.9
-    trainer.model.generation_config.top_p           = 0.9
+    trainer.model.generation_config.max_new_tokens = max_completion_length
+    trainer.model.generation_config.min_new_tokens = 100
+    trainer.model.generation_config.do_sample      = True
+    trainer.model.generation_config.temperature    = 0.9
+    trainer.model.generation_config.top_p          = 0.9
 
     result = trainer.train()
 
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
+    # Dump per-component reward stats — validates non-redundancy for ablation section
+    component_stats = reward_fn.get_stats()
+    stats_path = os.path.join(output_dir, "reward_component_stats.json")
+    with open(stats_path, "w") as f:
+        json.dump(component_stats, f, indent=2)
+
+    print(f"\nPer-component reward statistics (non-redundancy validation):")
+    for comp, s in component_stats.items():
+        print(f"  {comp:<6}  mean={s['mean']:+.4f}  std={s['std']:.4f}  n={s['n']}")
+    print(f"  Stats saved → {stats_path}")
+
     stats = {
-        "train_loss":    result.training_loss,
-        "train_runtime": result.metrics.get("train_runtime"),
-        "n_groups":      len(groups),
-        "weights":       weights.__dict__,
+        "train_loss":         result.training_loss,
+        "train_runtime":      result.metrics.get("train_runtime"),
+        "n_groups":           len(groups),
+        "weights":            weights.__dict__,
+        "reward_components":  component_stats,
     }
 
     with open(os.path.join(output_dir, "grpo_stats.json"), "w") as f:

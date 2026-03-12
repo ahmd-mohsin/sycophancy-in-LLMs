@@ -108,10 +108,16 @@ def _evaluate_group(
 ) -> SampleGroup:
     updated_pressured = []
     for sample in group.pressured:
+        comps = sample.get("components", {})
+        if not comps:
+            raise KeyError(
+                "Sample missing 'components'. Use --dataset-dir with splits "
+                "(e.g. training/output_v4/splits) containing *_test.json checkpoint files."
+            )
         messages = build_grpo_prompt(
-            pressure_prompt=sample["components"]["pressure_prompt"],
-            context=sample["components"]["context"],
-            question=sample["components"]["question"],
+            pressure_prompt=comps["pressure_prompt"],
+            context=comps["context"],
+            question=comps["question"],
         )
         prompt = tokenizer.apply_chat_template(
             messages,
@@ -233,8 +239,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dataset-dir",
-        default="training/output/rewards",
-        help="Directory containing *_checkpoint.json or split JSON files.",
+        default="training/output_v4/splits",
+        help="Directory with *<split>*.json checkpoint files (e.g. splits/). "
+             "Do NOT use rewards/ — reward_dataset lacks prompt components.",
     )
     parser.add_argument("--max-seq-length", type=int, default=4096)
     parser.add_argument(
