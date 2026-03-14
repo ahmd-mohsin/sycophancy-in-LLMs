@@ -1,0 +1,14 @@
+{
+  "model_id": "mistralai/Mistral-7B-v0.1",
+  "model_label": "Mistral-7B base",
+  "n_groups": 119,
+  "evaluated_at": "2026-03-13T00:29:02.550461",
+  "metrics": {
+    "pss_mean": 0.3501520582090065,
+    "pss_std": 0.3256689974343804,
+    "cfs_mean": 0.2613398141031676,
+    "cfs_std": 0.2625847059894023,
+    "pacf_mean": 0.36274648012993366,
+    "gas_mean": 0.2462336715181679
+  }
+}

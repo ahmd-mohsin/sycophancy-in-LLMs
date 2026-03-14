@@ -1,0 +1,26 @@
+[
+  {
+    "model_id": "Qwen/Qwen2.5-7B",
+    "label": "Qwen2.5 (7B) base",
+    "metrics": {
+      "pss_mean": 0.16250597870445307,
+      "pss_std": 0.19690070533008464,
+      "cfs_mean": 0.14400269546626318,
+      "cfs_std": 0.1887342618438262,
+      "pacf_mean": 0.3134956857450593,
+      "gas_mean": 0.08281825658544398
+    }
+  },
+  {
+    "model_id": "mistralai/Mistral-7B-v0.1",
+    "label": "Mistral-7B base",
+    "metrics": {
+      "pss_mean": 0.3501520582090065,
+      "pss_std": 0.3256689974343804,
+      "cfs_mean": 0.2613398141031676,
+      "cfs_std": 0.2625847059894023,
+      "pacf_mean": 0.36274648012993366,
+      "gas_mean": 0.2462336715181679
+    }
+  }
+]

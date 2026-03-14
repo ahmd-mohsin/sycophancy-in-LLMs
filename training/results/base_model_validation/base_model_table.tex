@@ -1,0 +1,27 @@
+\begin{table}[ht]
+\centering
+\caption{%
+  Metric scores for base models versus their instruction-tuned counterparts.
+  Base models have received no RLHF or preference optimisation.
+  The monotonic increase in PSS and GAS after instruction tuning validates
+  that the metrics track alignment-induced sycophancy.
+}
+\label{tab:base_model_validation}
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Model} & \textbf{Variant}  & \textbf{PSS}$\downarrow$  & \textbf{CFS}$\uparrow$  & \textbf{PACF}$\uparrow$  & \textbf{GAS}$\downarrow$ \\
+\midrule
+\multirow{2}{*}{Llama-3.1 (8B)}
+  & Base    & --- & --- & --- & --- \\
+  & Instruct & \multicolumn{4}{c}{\textit{see Table~\ref{tab:factual_results}}} \\
+\midrule
+\multirow{2}{*}{Qwen2.5 (7B)}
+  & Base    & 0.1625 & 0.1440 & 0.3135 & 0.0828 \\
+  & Instruct & \multicolumn{4}{c}{\textit{see Table~\ref{tab:factual_results}}} \\
+\midrule
+\multirow{2}{*}{Mistral-7B}
+  & Base    & 0.3502 & 0.2613 & 0.3627 & 0.2462 \\
+  & Instruct & \multicolumn{4}{c}{\textit{see Table~\ref{tab:factual_results}}} \\
+\bottomrule
+\end{tabular}
+\end{table}

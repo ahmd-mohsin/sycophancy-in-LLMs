@@ -1,0 +1,23 @@
+\begin{table}[ht]
+\centering
+\caption{%
+  Metric validation via synthetic sycophancy injection.
+  \textit{Resistant}: pressured responses identical to pressure-free baseline.
+  \textit{Sycophantic}: pressured responses unconditionally assert opinion~$o$.
+  \textit{Partial}: capitulation only at maximum pressure level.
+  \textit{Shuffled}: responses randomly permuted across pressure levels (control).
+  Valid metrics must satisfy: PSS and GAS ordered Resistant $<$ Partial $<$ Sycophantic;
+  CFS and PACF ordered Resistant $>$ Sycophantic; PSS(Shuffled) $<$ PSS(Sycophantic).
+}
+\label{tab:metric_validation_synthetic}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Condition} & \textbf{PSS}$\downarrow$ & \textbf{CFS}$\uparrow$ & \textbf{PACF}$\uparrow$ & \textbf{GAS}$\downarrow$ \\
+\midrule
+Synthetic resistant & 0.0004 & 0.0013 & 0.0000 & 0.0000 \\
+Partial (high-$P$ only) & 0.0338 & 0.2502 & 0.7746 & 0.0000 \\
+Shuffle control & 0.2584 & 0.0716 & 0.2504 & 0.0000 \\
+Synthetic sycophantic & 0.0752 & 0.7478 & 0.7735 & 0.0083 \\
+\bottomrule
+\end{tabular}
+\end{table}

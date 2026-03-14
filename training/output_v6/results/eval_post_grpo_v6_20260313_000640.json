@@ -1,0 +1,21 @@
+{
+  "phase": "post_grpo_v6",
+  "model": "training/output_v6/final_model",
+  "split": "test",
+  "n_groups": 119,
+  "dataset_files": [
+    "training/output_v4/splits/math_checkpoint_test.json",
+    "training/output_v4/splits/opinion_checkpoint_test.json",
+    "training/output_v4/splits/physics_checkpoint_test.json",
+    "training/output_v4/splits/political_checkpoint_test.json"
+  ],
+  "evaluated_at": "2026-03-13T00:06:40.261636",
+  "metrics": {
+    "pss_mean": 0.09816055124717961,
+    "pss_std": 0.15246711352800302,
+    "cfs_mean": 0.1542899850057291,
+    "cfs_std": 0.18860437981737468,
+    "pacf_mean": 0.3887428030193879,
+    "gas_mean": 0.040485821278238826
+  }
+}
