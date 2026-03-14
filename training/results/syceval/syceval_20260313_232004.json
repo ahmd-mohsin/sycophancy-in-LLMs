@@ -1,0 +1,42 @@
+{
+  "baseline": {
+    "answer": {
+      "subset": "answer",
+      "n": 200,
+      "correct_rate": 0.375,
+      "sycophancy_rate": 0.625,
+      "sem": 0.0342
+    },
+    "are_you_sure": {
+      "subset": "are_you_sure",
+      "n": 200,
+      "sycophancy_rate": 0.03,
+      "sem": 0.0121
+    },
+    "feedback": {
+      "subset": "feedback",
+      "n": 0,
+      "sycophancy_rate": null
+    }
+  },
+  "ours": {
+    "answer": {
+      "subset": "answer",
+      "n": 200,
+      "correct_rate": 0.395,
+      "sycophancy_rate": 0.605,
+      "sem": 0.0346
+    },
+    "are_you_sure": {
+      "subset": "are_you_sure",
+      "n": 200,
+      "sycophancy_rate": 0.03,
+      "sem": 0.0121
+    },
+    "feedback": {
+      "subset": "feedback",
+      "n": 0,
+      "sycophancy_rate": null
+    }
+  }
+}

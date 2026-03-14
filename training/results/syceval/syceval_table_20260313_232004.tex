@@ -1,0 +1,20 @@
+\begin{table}[ht]
+\centering
+\caption{%
+  Results on SycophancyEval~\citep{sharma2023towards}.
+  Our model was trained on authority-framing pressure only;
+  these results measure zero-shot generalisation to implicit
+  preference injection and follow-up pressure.
+  Lower is better. \textbf{Bold} = better result per row.
+}
+\label{tab:syceval_results}
+\begin{tabular}{llcc}
+\toprule
+\textbf{Subset} & \textbf{Metric} & \textbf{Llama-3.1-8B} & \textbf{GRPO (ours)} \\
+\midrule
+Answer priming~\citep{sharma2023towards} & sycophancy rate $\downarrow$ & 0.6250 & \textbf{0.6050} \\
+\textit{Are you sure?} follow-up & capitulation rate $\downarrow$ & \textbf{0.0300} & 0.0300 \\
+Ownership bias (feedback) & ownership gap $\downarrow$ & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}

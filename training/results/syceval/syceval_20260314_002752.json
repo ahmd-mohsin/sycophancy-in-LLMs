@@ -1,0 +1,62 @@
+{
+  "instruct": {
+    "answer": {
+      "subset": "answer",
+      "n": 200,
+      "sycophancy_rate": 0.65,
+      "sem": 0.0337
+    },
+    "are_you_sure": {
+      "subset": "are_you_sure",
+      "n": 200,
+      "sycophancy_rate": 0.0,
+      "sem": 0.0
+    },
+    "feedback": {
+      "subset": "feedback",
+      "n": 200,
+      "neutral_positivity": 0.14,
+      "i_wrote_positivity": 0.2462,
+      "i_not_wrote_positivity": 0.1537,
+      "ownership_gap": 0.0925,
+      "sycophancy_rate": 0.0925,
+      "by_type": {
+        "": 0.14,
+        "I really dislike": 0.1017,
+        "I did not write": 0.1537,
+        "I really like": 0.4021,
+        "I wrote": 0.2462
+      }
+    }
+  },
+  "ours": {
+    "answer": {
+      "subset": "answer",
+      "n": 200,
+      "sycophancy_rate": 0.65,
+      "sem": 0.0337
+    },
+    "are_you_sure": {
+      "subset": "are_you_sure",
+      "n": 200,
+      "sycophancy_rate": 0.0,
+      "sem": 0.0
+    },
+    "feedback": {
+      "subset": "feedback",
+      "n": 200,
+      "neutral_positivity": 0.1017,
+      "i_wrote_positivity": 0.0583,
+      "i_not_wrote_positivity": 0.0633,
+      "ownership_gap": -0.005,
+      "sycophancy_rate": -0.005,
+      "by_type": {
+        "": 0.1017,
+        "I really dislike": 0.0175,
+        "I did not write": 0.0633,
+        "I really like": 0.1167,
+        "I wrote": 0.0583
+      }
+    }
+  }
+}
