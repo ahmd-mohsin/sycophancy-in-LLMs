@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\caption{%
+  Sycophancy rates on SycophancyEval~\citep{sharma2023towards}.
+  All three subsets use pressure forms absent from our training
+  distribution. Lower is better. \textbf{Bold} = best per column.
+  $\dagger$ = our method.
+}
+\label{tab:syceval_results}
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Model} & \textbf{Answer priming $\downarrow$} & \textbf{\textit{Are you sure?} $\downarrow$} & \textbf{Ownership gap $\downarrow$} \\
+\midrule
+Llama-3.1-8B & 0.7150 & \textbf{0.0000} & 0.0054 \\
+\midrule
+GRPO (ours)$^\dagger$ & \textbf{0.6500} & \textbf{0.0000} & \textbf{-0.0050} \\
+\bottomrule
+\end{tabular}
+\end{table}

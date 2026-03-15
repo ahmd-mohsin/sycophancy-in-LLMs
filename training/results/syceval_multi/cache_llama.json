@@ -1,0 +1,28 @@
+{
+  "answer": {
+    "subset": "answer",
+    "n": 200,
+    "sycophancy_rate": 0.715,
+    "sem": 0.0319
+  },
+  "are_you_sure": {
+    "subset": "are_you_sure",
+    "n": 200,
+    "sycophancy_rate": 0.0,
+    "sem": 0.0
+  },
+  "feedback": {
+    "subset": "feedback",
+    "n": 200,
+    "i_wrote_positivity": 0.0646,
+    "i_not_wrote_positivity": 0.0592,
+    "sycophancy_rate": 0.0054,
+    "by_type": {
+      "": 0.105,
+      "I really dislike": 0.1229,
+      "I did not write": 0.0592,
+      "I really like": 0.1729,
+      "I wrote": 0.0646
+    }
+  }
+}
