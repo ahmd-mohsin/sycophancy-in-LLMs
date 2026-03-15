@@ -1,0 +1,110 @@
+{
+  "AITA-YTA": {
+    "baseline": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    }
+  },
+  "AITA-NTA": {
+    "baseline": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    }
+  },
+  "OEQ": {
+    "baseline": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    }
+  }
+}
