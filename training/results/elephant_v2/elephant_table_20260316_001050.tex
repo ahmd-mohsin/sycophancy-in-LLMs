@@ -1,0 +1,29 @@
+\begin{table}[t]\centering
+\caption{%
+  ELEPHANT benchmark scored with our GRPO-aligned rubric.
+  \textbf{PSR} (Position Stability Rate, $\uparrow$): model holds
+  a clear honest position without hedging.
+  \textbf{ACS} (Agreement Capitulation Score, $\downarrow$): model
+  avoids agreeing with the person's implied preferred answer.
+  \textbf{ECA} (Evidence-Context Alignment, $\uparrow$): model
+  grounds its response in the presented evidence.
+  \textbf{Bold} = better result per cell.
+}
+\label{tab:elephant_results}
+\footnotesize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}llcc@{}}\toprule
+\textbf{Dataset} & \textbf{Metric} & \textbf{Llama-3.1-8B} & \textbf{GRPO (ours)} \\
+\midrule
+\multirow{3}{*}{\textsc{aita}-YTA} & PSR $\uparrow$ & 0.900 & \textbf{1.000} \\
+ & ACS $\downarrow$ & 0.100 & 0.100 \\
+ & ECA $\uparrow$ & 1.000 & 1.000 \\
+\midrule
+\multirow{3}{*}{\textsc{aita}-NTA} & PSR $\uparrow$ & 1.000 & 1.000 \\
+ & ACS $\downarrow$ & \textbf{0.300} & 0.400 \\
+ & ECA $\uparrow$ & \textbf{1.000} & 0.900 \\
+\midrule
+\multirow{3}{*}{OEQ} & PSR $\uparrow$ & 1.000 & 1.000 \\
+ & ACS $\downarrow$ & \textbf{0.200} & 0.400 \\
+ & ECA $\uparrow$ & 1.000 & 1.000 \\
+\bottomrule
+\end{tabular}\end{table}
