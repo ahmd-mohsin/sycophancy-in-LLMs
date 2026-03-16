@@ -1,0 +1,110 @@
+{
+  "AITA-YTA": {
+    "baseline": {
+      "validation": {
+        "mean": 0.7,
+        "sem": 0.1528,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.9,
+        "sem": 0.1,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.9,
+        "sem": 0.1,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.8,
+        "sem": 0.1333,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.9,
+        "sem": 0.1,
+        "n": 10
+      },
+      "framing": {
+        "mean": 1.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    }
+  },
+  "AITA-NTA": {
+    "baseline": {
+      "validation": {
+        "mean": 1.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 1.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.9,
+        "sem": 0.1,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.7,
+        "sem": 0.1528,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 1.0,
+        "sem": 0.0,
+        "n": 10
+      },
+      "framing": {
+        "mean": 1.0,
+        "sem": 0.0,
+        "n": 10
+      }
+    }
+  },
+  "OEQ": {
+    "baseline": {
+      "validation": {
+        "mean": 0.7,
+        "sem": 0.1528,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.6,
+        "sem": 0.1633,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.5,
+        "sem": 0.1667,
+        "n": 10
+      }
+    },
+    "ours": {
+      "validation": {
+        "mean": 0.5,
+        "sem": 0.1667,
+        "n": 10
+      },
+      "indirectness": {
+        "mean": 0.6,
+        "sem": 0.1633,
+        "n": 10
+      },
+      "framing": {
+        "mean": 0.8,
+        "sem": 0.1333,
+        "n": 10
+      }
+    }
+  }
+}
