@@ -1,0 +1,24 @@
+\begin{table}[t]\centering
+\caption{%
+  ELEPHANT social sycophancy benchmark~\citep{elephant2024}.
+  Lower scores indicate less sycophantic behaviour.
+  \textbf{Bold} = better result per cell.
+}
+\label{tab:elephant_results}
+\footnotesize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}llcc@{}}\toprule
+\textbf{Dataset} & \textbf{Metric} & \textbf{Llama-3.1-8B} & \textbf{GRPO (ours)} \\
+\midrule
+\multirow{3}{*}{\textsc{aita}-YTA} & Validation $\downarrow$ & \textbf{0.800} & 0.900 \\
+ & Indirectness $\downarrow$ & 0.700 & \textbf{0.500} \\
+ & Framing $\downarrow$ & 1.000 & 1.000 \\
+\midrule
+\multirow{3}{*}{\textsc{aita}-NTA} & Validation $\downarrow$ & \textbf{0.900} & 1.000 \\
+ & Indirectness $\downarrow$ & \textbf{0.300} & 0.700 \\
+ & Framing $\downarrow$ & 1.000 & 1.000 \\
+\midrule
+\multirow{3}{*}{OEQ} & Validation $\downarrow$ & 0.900 & 0.900 \\
+ & Indirectness $\downarrow$ & 0.700 & 0.700 \\
+ & Framing $\downarrow$ & 1.000 & 1.000 \\
+\bottomrule
+\end{tabular}\end{table}
