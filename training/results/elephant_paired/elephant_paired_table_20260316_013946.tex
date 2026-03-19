@@ -1,0 +1,44 @@
+\begin{table}[t]\centering
+\caption{%
+  ELEPHANT benchmark: paired pressure evaluation.
+  For each prompt we generate a no-pressure baseline response and
+  three pressured responses at escalating authority levels.
+  \textit{Stance shift}: NLI contradiction between no-pressure and
+  pressured stance sentences (lower = more pressure-resistant).
+  \textit{Flip rate}: fraction of samples where pressure reversed
+  the model's stance (lower = better).
+  \textbf{Bold} = better per cell.
+}
+\label{tab:elephant_paired}
+\footnotesize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}lllcc@{}}\toprule
+\textbf{Dataset} & \textbf{Pressure} & \textbf{Metric} & \textbf{Llama-3.1-8B} & \textbf{GRPO (ours)} \\
+\midrule
+\multirow{8}{*}{\textsc{aita}-YTA} & \multirow{2}{*}{Low} & Shift$\downarrow$ & \textbf{0.293} & 0.365 \\
+ &  & Flip$\downarrow$ & \textbf{0.300} & 0.400 \\
+ & \multirow{2}{*}{Medium} & Shift$\downarrow$ & 0.292 & 0.290 \\
+ &  & Flip$\downarrow$ & 0.300 & 0.300 \\
+ & \multirow{2}{*}{High} & Shift$\downarrow$ & \textbf{0.297} & 0.376 \\
+ &  & Flip$\downarrow$ & \textbf{0.300} & 0.400 \\
+ & & \textbf{Mean shift}$\downarrow$ & \textbf{0.294} & 0.344 \\
+ & & \textbf{Mean flip}$\downarrow$ & \textbf{0.300} & 0.367 \\
+\midrule
+\multirow{8}{*}{\textsc{aita}-NTA} & \multirow{2}{*}{Low} & Shift$\downarrow$ & 0.200 & \textbf{0.100} \\
+ &  & Flip$\downarrow$ & 0.200 & \textbf{0.100} \\
+ & \multirow{2}{*}{Medium} & Shift$\downarrow$ & 0.200 & \textbf{0.038} \\
+ &  & Flip$\downarrow$ & 0.200 & \textbf{0.000} \\
+ & \multirow{2}{*}{High} & Shift$\downarrow$ & \textbf{0.105} & 0.196 \\
+ &  & Flip$\downarrow$ & \textbf{0.100} & 0.200 \\
+ & & \textbf{Mean shift}$\downarrow$ & 0.168 & \textbf{0.111} \\
+ & & \textbf{Mean flip}$\downarrow$ & 0.167 & \textbf{0.100} \\
+\midrule
+\multirow{8}{*}{OEQ} & \multirow{2}{*}{Low} & Shift$\downarrow$ & \textbf{0.002} & 0.100 \\
+ &  & Flip$\downarrow$ & \textbf{0.000} & 0.100 \\
+ & \multirow{2}{*}{Medium} & Shift$\downarrow$ & 0.129 & \textbf{0.100} \\
+ &  & Flip$\downarrow$ & 0.100 & 0.100 \\
+ & \multirow{2}{*}{High} & Shift$\downarrow$ & \textbf{0.100} & 0.299 \\
+ &  & Flip$\downarrow$ & \textbf{0.100} & 0.300 \\
+ & & \textbf{Mean shift}$\downarrow$ & \textbf{0.077} & 0.167 \\
+ & & \textbf{Mean flip}$\downarrow$ & \textbf{0.067} & 0.167 \\
+\bottomrule
+\end{tabular}\end{table}

@@ -1,0 +1,30 @@
+\begin{table}[t]\centering
+\caption{%
+  ELEPHANT benchmark evaluated with paired pressure design.
+  For each prompt we generate a baseline response (no pressure) and
+  three pressured responses at escalating authority levels,
+  then measure semantic shift (PSS$_\text{elephant}$) between them.
+  Lower PSS$_\text{elephant}$ = more pressure-resistant = better.
+  \textbf{Bold} = better result per row.
+}
+\label{tab:elephant_paired}
+\footnotesize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}llcc@{}}\toprule
+\textbf{Dataset} & \textbf{Pressure level} & \textbf{Llama-3.1-8B} & \textbf{GRPO (ours)} \\
+\midrule
+\multirow{4}{*}{\textsc{aita}-YTA} & Low & 0.0002 & 0.0004 \\
+ & Medium & 0.0001 & 0.0010 \\
+ & High & 0.0002 & 0.0003 \\
+ & \textbf{Mean} & 0.0002 & 0.0006 \\
+\midrule
+\multirow{4}{*}{\textsc{aita}-NTA} & Low & 0.0010 & 0.0024 \\
+ & Medium & 0.0808 & \textbf{0.0748} \\
+ & High & 0.0005 & 0.0023 \\
+ & \textbf{Mean} & 0.0274 & 0.0265 \\
+\midrule
+\multirow{4}{*}{OEQ} & Low & 0.0016 & 0.0010 \\
+ & Medium & \textbf{0.0006} & 0.1003 \\
+ & High & 0.0007 & 0.0005 \\
+ & \textbf{Mean} & \textbf{0.0010} & 0.0339 \\
+\bottomrule
+\end{tabular}\end{table}
